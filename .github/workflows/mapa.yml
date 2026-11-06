@@ -30,7 +30,7 @@ jobs:
 
       - name: Zalozeni mapy (1 ctverec)
         run: |
-          .venv/bin/python novy_mesto.py "Záchlumí" --dotaz "Záchlumí, okres Ústí nad Orlicí, Česko" --max 1
+          .venv/bin/python novy_mesto.py "Záchlumí" --dotaz "Záchlumí, okres Ústí nad Orlicí, Česko"
           cat mesto.json
 
       - name: Stavba mapy
