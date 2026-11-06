@@ -1,0 +1,1511 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta property="og:title" content="Izometrické Záchlumí">
+<meta property="og:description" content="Izometrická pixel-art mapa: Záchlumí ve stylu SimCity 2000. Roční období, den a noc, počasí a příběhy míst.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Izometrické Záchlumí">
+<meta property="og:locale" content="cs_CZ">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "Izometrické Záchlumí", "description": "Izometrická pixel-art mapa: Záchlumí ve stylu SimCity 2000. Roční období, den a noc, počasí a příběhy míst.", "inLanguage": "cs", "applicationCategory": "TravelApplication", "operatingSystem": "Web", "spatialCoverage": {"@type": "Place", "name": "Záchlumí"}, "isBasedOn": ["https://www.openstreetmap.org/", "https://overturemaps.org/", "https://geoportal.cuzk.cz/"]}</script>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}[hidden]{display:none!important}</style>
+<title>Izometrické Záchlumí</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Izometrická pixel-art mapa: Záchlumí ve stylu SimCity 2000. Roční období, den a noc, počasí a příběhy míst.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: mapa přes celou obrazovku; vlevo herní panel s ovládáním, vpravo dole karta a zoom, vlevo dole minimapa.
+   Na mobilu: panel jen jako hlavička s tlačítkem Menu, dole lišta s ročními obdobími a dobou dne, karta vyjíždí zespodu. */
+:root {
+  --night: #1b2333;
+  --panel: #232d42;
+  --panel-2: #1d2638;
+  --edge: #3a4762;
+  --ink: #eef1e6;
+  --muted: #a9b3c4;
+  --tile: #c9583b;
+  --grass: #8cc063;
+  --lamp: #f2c66d;
+  --display: "Pixelify Sans", "Courier New", monospace;
+  --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--night); color: var(--ink); font-family: var(--body); overflow: hidden; }
+#map { position: fixed; inset: 0; background: var(--night); }
+#osd { width: 100%; height: 100%; }
+#fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
+#map canvas { image-rendering: pixelated; }
+
+.panel {
+  position: fixed; z-index: 3;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  left: max(16px, env(safe-area-inset-left, 0px));
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100% - 32px - 190px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+  background: var(--panel); border: 2px solid var(--edge); box-shadow: 4px 4px 0 rgba(0, 0, 0, .35);
+  display: grid; gap: 12px; padding: 14px 16px;
+}
+.panel { transition: transform .2s ease; }
+.fold {
+  position: fixed; z-index: 3; top: calc(env(safe-area-inset-top, 0px) + 28px);
+  left: calc(max(16px, env(safe-area-inset-left, 0px)) + var(--pw, 356px)); transition: left .2s ease;
+  width: 22px; height: 52px; padding: 0; display: grid; place-items: center; cursor: pointer;
+  background: var(--panel); color: var(--muted); border: 2px solid var(--edge); border-left: 0;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .35); font-family: var(--display); font-size: 1rem;
+}
+.fold:hover, .fold:focus-visible { color: var(--ink); background: var(--panel-2); }
+.folded .panel { transform: translateX(calc(-100% - 24px)); }
+.folded .fold { left: 0; border-left: 0; }
+.head { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+h1 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 1.75rem; line-height: 1; text-wrap: balance; }
+h1 span { color: var(--tile); }
+.sub { margin: 4px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+.label { font-family: var(--display); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--grass); margin: 0 0 6px; }
+.menu-btn { display: none; }
+button { font: inherit; color: inherit; }
+.px-btn {
+  cursor: pointer; background: var(--panel-2); border: 2px solid var(--edge); padding: 6px 8px; color: var(--ink);
+  font-family: var(--display); font-size: .9rem; box-shadow: 2px 2px 0 rgba(0, 0, 0, .35); min-height: 36px;
+}
+.px-btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 rgba(0, 0, 0, .35); }
+.px-btn[aria-pressed="true"] { background: var(--tile); border-color: #e27a5c; }
+.px-btn:disabled { opacity: .4; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--grass); outline-offset: 2px; }
+
+.search input {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; background: var(--panel-2); color: var(--ink);
+  border: 2px solid var(--edge); font: inherit; font-size: .95rem;
+}
+.search input::placeholder { color: var(--muted); }
+.results { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 1px; }
+.results button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: 6px 8px; display: flex; justify-content: space-between; gap: 8px; font-size: .9rem; }
+.results button:hover, .results button.on, .results button:focus-visible { background: var(--panel-2); outline: 1px solid var(--edge); }
+.results small { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+
+.chips4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.chips2 { display: grid; grid-template-columns: 1fr 1.6fr; gap: 6px; }
+.wip-tag { display: inline-block; font-family: var(--display); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--night); background: var(--lamp); padding: 1px 6px; }
+.daynight { display: grid; gap: 4px; }
+.daynight .ends { display: flex; justify-content: space-between; font-family: var(--display); font-size: .78rem; color: var(--muted); }
+input[type="range"] { width: 100%; accent-color: var(--lamp); }
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.layers label { display: flex; gap: 8px; align-items: center; font-size: .88rem; cursor: pointer; min-height: 24px; }
+.layers input { accent-color: var(--grass); width: 16px; height: 16px; }
+details summary { cursor: pointer; font-family: var(--display); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--grass); }
+.places { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 1px; }
+.places button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: 6px 8px; font-size: .9rem; }
+.places button:hover, .places button:focus-visible { background: var(--panel-2); outline: 1px solid var(--edge); }
+.about p { margin: 6px 0 0; font-size: .8rem; line-height: 1.45; color: var(--muted); }
+.about strong { color: var(--ink); }
+.about .author { color: var(--ink); }
+.about a, .card a { color: var(--ink); }
+
+.card {
+  position: fixed; z-index: 4;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+  width: min(330px, calc(100vw - 32px));
+  max-height: 60%; overflow: auto;
+  background: var(--panel); border: 2px solid var(--tile); box-shadow: 4px 4px 0 rgba(0, 0, 0, .35);
+  padding: 12px 14px; display: grid; gap: 8px;
+}
+.card .grab { display: none; }
+.card h2 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 1.2rem; line-height: 1.1; padding-right: 34px; text-wrap: balance; }
+.card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: .86rem; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; font-variant-numeric: tabular-nums; }
+.card p { margin: 0; font-size: .86rem; line-height: 1.45; }
+.card .close { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; padding: 0; }
+.head { flex-wrap: wrap; row-gap: 0; }
+.head > div:first-child { display: contents; }
+.head h1 { flex: 1 1 0; min-width: 0; }
+.head .sub { order: 2; flex-basis: 100%; margin-top: 8px; }
+.head-btns { display: flex; gap: 6px; align-items: start; }
+@media (min-width: 641px) { .head h1 { font-size: 1.55rem; } }
+h1 span { white-space: nowrap; }        /* dlouhý název města: zalomí se celý na další řádek */
+.fb-btn { box-sizing: border-box; text-decoration: none; color: #fff; background: #1877f2; border-color: #0d4fa8; }
+.fb-btn:hover { background: #2f88ff; }
+.help-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 1rem; }
+.px-btn .ico { width: 18px; height: 18px; display: block; margin: auto; }
+.ico-inline svg { width: 14px; height: 14px; vertical-align: -2px; }
+dialog.help { max-width: 520px; width: calc(100% - 32px); max-height: calc(100% - 48px); overflow: auto; background: var(--panel); color: var(--ink);
+  border: 2px solid var(--edge); box-shadow: 6px 6px 0 rgba(0, 0, 0, .4); padding: 18px 20px; font-size: .9rem; line-height: 1.5; }
+dialog.help::backdrop { background: rgba(10, 14, 24, .6); }
+dialog.help h2 { margin: 0 36px 8px 0; font-family: var(--display); font-weight: 500; }
+dialog.help h3 { margin: 14px 0 4px; font-family: var(--display); font-weight: 500; font-size: 1rem; color: var(--grass); }
+dialog.help ul { margin: 0; padding-left: 18px; } dialog.help li { margin: 3px 0; }
+dialog.help p { margin: 4px 0; } dialog.help a { color: var(--ink); }
+dialog.help .close { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; padding: 0; }
+dialog.help .muted { color: var(--muted); margin-top: 14px; }
+.support-links { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }
+.support-links a.px-btn { text-decoration: none; display: inline-block; }
+.coffee { display: block; font-size: .82rem; color: var(--muted); text-decoration: none; padding: 2px 0; }
+.coffee:hover, .coffee:focus-visible { color: var(--ink); text-decoration: underline; }
+.support-links img { width: 132px; height: 132px; image-rendering: pixelated; background: #fff; padding: 4px; }
+.follow { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px;
+  background: var(--panel); border: 2px solid var(--edge); box-shadow: 4px 4px 0 rgba(0, 0, 0, .35); font-size: .9rem; max-width: calc(100vw - 32px); }
+.follow b { font-family: var(--display); font-weight: 500; }
+.follow .px-btn { width: 32px; height: 32px; padding: 0; flex: none; }
+@media (max-width: 640px) { .follow { bottom: 72px; } }
+dialog.help .vd-hero { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+dialog.help .vd-hero img { width: 56px; height: 132px; image-rendering: pixelated; }
+dialog.help ol.vd-list { margin: 0; padding-left: 22px; } ol.vd-list li { margin: 2px 0; } ol.vd-list span { color: var(--muted); font-size: .8rem; }
+#vdFoundMsg.ok { color: var(--grass); } #vdFoundMsg.err { color: #ff9a6a; }
+.here-pin { width: 26px; height: 26px; border: 3px solid #ff9a3c; border-radius: 50%; box-shadow: 0 0 0 3px rgba(20, 26, 40, .7); animation: herepulse 1.2s ease-in-out infinite; pointer-events: none; }
+@keyframes herepulse { 50% { transform: scale(1.5); opacity: .55; } }
+.toast { position: fixed; z-index: 6; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); transform: translateX(-50%);
+  background: var(--panel); border: 2px solid var(--edge); padding: 8px 14px; font-size: .86rem; box-shadow: 4px 4px 0 rgba(0, 0, 0, .35); }
+.realtime { display: flex; gap: 8px; align-items: center; font-size: .82rem; color: var(--muted); margin-top: 6px; cursor: pointer; }
+.realtime input { accent-color: var(--grass); }
+.card .report summary { cursor: pointer; font-size: .82rem; color: var(--muted); }
+.card .report form { display: grid; gap: 6px; margin-top: 6px; }
+.card .report textarea { font: inherit; font-size: .86rem; background: var(--panel-2); color: var(--ink); border: 2px solid var(--edge); padding: 4px 6px; }
+.card .report #repMsg { font-size: .86rem; color: var(--muted); }
+.card .report #repMsg.rep-ok { color: #ff9a3c; font-weight: 700; font-size: .95rem; }
+.card .report #repMsg.rep-err { color: #ff7a5c; font-weight: 700; }
+.card .links { display: flex; gap: 12px; flex-wrap: wrap; font-size: .86rem; }
+
+.controls {
+  position: fixed; z-index: 3; right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); display: flex; gap: 6px;
+}
+.controls .px-btn { width: 44px; height: 44px; padding: 0; font-size: 1.2rem; }
+.minimap {
+  position: fixed; z-index: 3; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  background: var(--panel); border: 2px solid var(--edge); box-shadow: 4px 4px 0 rgba(0, 0, 0, .35); padding: 4px; display: grid; gap: 4px;
+}
+.minimap canvas { display: block; width: 220px; image-rendering: pixelated; cursor: pointer; touch-action: none; }
+.minimap .scale { font-family: var(--display); font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; padding: 0 2px; }
+.pin {
+  font-family: var(--display); font-size: .8rem; white-space: nowrap; color: var(--ink);
+  background: var(--panel); border: 2px solid var(--tile); padding: 2px 6px; transform: translate(-50%, -140%);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .4); pointer-events: none; position: relative;
+}
+.pin::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 10px; background: var(--tile); transform: translateX(-50%); }
+.pin.need { background: var(--lamp); color: var(--night); border-color: var(--night); transform: translate(-50%, -260%); }
+.pin.need::after { background: var(--night); }
+.nolabels .pin, .far .pin:not(.need) { display: none !important; }
+.loading { position: fixed; inset: 0; display: grid; place-items: center; font-family: var(--display); color: var(--muted); z-index: 1; pointer-events: none; }
+.mbar { display: none; }
+
+@media (max-width: 640px) {
+  .menu-btn { display: inline-block; min-width: 56px; min-height: 44px; }
+  .head-btns { gap: 4px; }
+  .help-btn { width: 40px; height: 44px; }
+  .panel.closed > :not(.head) { display: none; }
+  .panel { padding: 10px 12px; gap: 12px; max-height: calc(100% - 100px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  .panel.closed .sub { display: none; }
+  h1 { font-size: 1.2rem; }
+  .controls, .minimap, .fold { display: none; }
+  .folded .panel { transform: none; }
+  .mbar {
+    display: grid; grid-template-columns: repeat(4, 1fr) 1fr 0.8fr; gap: 6px;
+    position: fixed; z-index: 5; left: 0; right: 0; bottom: 0;
+    padding: 8px max(10px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+    background: var(--panel); border-top: 2px solid var(--edge);
+  }
+  .mbar .px-btn { min-height: 48px; font-size: .85rem; padding: 4px 2px; }
+  .card {
+    left: 0; right: 0; width: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); max-height: 55%;
+    border-width: 2px 0 0; box-shadow: 0 -4px 0 rgba(0, 0, 0, .3);
+    padding: 6px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+    transition: transform .2s ease;
+  }
+  .card .grab { display: block; width: 44px; height: 5px; background: var(--edge); margin: 4px auto 6px; touch-action: none; }
+  .card .close { top: 10px; right: max(10px, env(safe-area-inset-right, 0px)); width: 44px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<div id="map" aria-label="Izometrická pixel-art mapa Záchlumí"><div id="osd"></div><canvas id="fx"></canvas></div>
+<div class="loading" id="loading">Načítám mapu…</div>
+
+<button class="fold" id="fold" type="button" aria-controls="panel" aria-expanded="true" aria-label="Zasunout panel" title="Zasunout panel">‹</button>
+<aside class="panel" id="panel">
+  <div class="head">
+    <div>
+      <h1>Izometrické <span>Záchlumí</span></h1>
+      <p class="sub" id="sub">Záchlumí z otevřených dat, ve stylu SimCity 2000.</p>
+    </div>
+    <div class="head-btns">
+      <button class="px-btn help-btn" id="help" type="button" aria-label="Nápověda a o projektu" title="Nápověda a o projektu">?</button>
+      <button class="px-btn menu-btn" id="menu" type="button" aria-expanded="true">Menu</button>
+    </div>
+  </div>
+
+  <div class="search">
+    <label class="label" for="q">Hledat</label>
+    <input id="q" type="search" placeholder="Ulice, adresa nebo místo" autocomplete="off">
+    <ul class="results" id="results"></ul>
+  </div>
+
+  <div>
+    <p class="label">Zobrazit</p>
+    <div class="chips2" id="wipSel">
+      <button class="px-btn" type="button" data-wip="0">Hotovo</button>
+      <button class="px-btn" type="button" data-wip="1">Vč. rozpracovaného</button>
+    </div>
+  </div>
+
+  <div>
+    <p class="label">Roční období</p>
+    <div class="chips4" id="seasons">
+      <button class="px-btn" type="button" data-s="spring">Jaro</button>
+      <button class="px-btn" type="button" data-s="summer">Léto</button>
+      <button class="px-btn" type="button" data-s="autumn">Podzim</button>
+      <button class="px-btn" type="button" data-s="winter">Zima</button>
+    </div>
+  </div>
+
+  <div class="daynight">
+    <label class="label" for="night">Denní doba</label>
+    <input id="night" type="range" min="0" max="100" value="0">
+    <div class="ends"><span>Den</span><span>Zlatá hodinka</span><span>Noc</span></div>
+    <label class="realtime"><input type="checkbox" id="realTime"> Podle skutečného času</label>
+  </div>
+
+  <div>
+    <p class="label">Počasí</p>
+    <div class="chips4" id="weather">
+      <button class="px-btn" type="button" data-w="clear">Jasno</button>
+      <button class="px-btn" type="button" data-w="rain">Déšť</button>
+      <button class="px-btn" type="button" data-w="snow">Sníh</button>
+      <button class="px-btn" type="button" data-w="fog">Mlha</button>
+    </div>
+    <label class="realtime" id="realWeatherRow" hidden><input type="checkbox" id="realWeather"> Podle skutečného počasí</label>
+  </div>
+
+  <div>
+    <p class="label">Vrstvy</p>
+    <div class="layers">
+      <label><input type="checkbox" id="l-labels" checked> Popisky</label>
+      <label><input type="checkbox" id="l-traffic" checked> Doprava</label>
+      <label><input type="checkbox" id="l-smoke" checked> Kouř z komínů</label>
+      <label><input type="checkbox" id="l-hover" checked> Zvýraznit budovy</label>
+    </div>
+  </div>
+
+  <details id="placesBox">
+    <summary>Místa a příběhy</summary>
+    <ul class="places" id="places"></ul>
+  </details>
+
+  <details class="about">
+    <summary>O projektu</summary>
+    <p>Mapa vznikla nástrojem <a href="https://github.com/adamklatovsky/izomapa" target="_blank" rel="noopener">izomapa</a> z otevřených dat. Budovy, adresy, silnice, voda a zeleň pochází z Overture Maps (OpenStreetMap), terén z modelu Terrarium, výšky budov, les a pole z dat ČÚZK. Lampy podél ulic, zaparkovaná auta, popelnice, hroby a část stromů v zahradách jsou doplněné podle typu území, nejde o přesné polohy.</p>
+    <p><strong>Co je izometrie?</strong><br>Pohled shora a šikmo bez perspektivy: čáry se do dálky nesbíhají a věci si drží svou skutečnou velikost bez ohledu na to, jak daleko jsou od pozorovatele. Dům na kraji mapy je stejně velký jako ten uprostřed. Tenhle styl si pamatuje každý, kdo koncem 90. let trávil hodiny u SimCity a podobných budovatelských her.</p>
+  </details>
+</aside>
+
+<div class="follow" id="follow" hidden aria-live="polite"><span id="followTxt"></span><button class="px-btn" id="followStop" type="button" aria-label="Přestat sledovat">×</button></div>
+<section class="card" id="card" hidden aria-live="polite">
+  <div class="grab" id="grab" aria-hidden="true"></div>
+  <button class="px-btn close" id="cardClose" type="button" aria-label="Zavřít">×</button>
+  <h2 id="cardTitle"></h2>
+  <p id="cardText" hidden></p>
+  <dl id="cardDl"></dl>
+  <div class="links" id="cardLinks"></div>
+  <details class="report" id="report" hidden>
+    <summary>Nahlásit nepřesnost</summary>
+    <form id="reportForm">
+      <textarea id="repNote" rows="3" maxlength="500" required placeholder="Co tu nesedí se skutečností?"></textarea>
+      <button class="px-btn" type="submit">Odeslat</button>
+      <span id="repMsg" role="status"></span>
+    </form>
+  </details>
+</section>
+
+<div class="minimap" id="minimap">
+  <canvas id="mini" width="220" height="128" aria-label="Minimapa: kliknutím přesunete pohled"></canvas>
+  <div class="scale" id="scale">1 px = 20 cm</div>
+</div>
+<div class="controls">
+  <button class="px-btn" id="zin" type="button" title="Přiblížit">+</button>
+  <button class="px-btn" id="zout" type="button" title="Oddálit">−</button>
+  <button class="px-btn" id="home" type="button" title="Celá mapa">⌂</button>
+  <button class="px-btn" id="share" type="button" title="Sdílet tento pohled" aria-label="Sdílet tento pohled"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/><path d="M8 10H5v11h14V10h-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<dialog class="help" id="helpDlg" aria-labelledby="helpTitle">
+  <button class="px-btn close" id="helpClose" type="button" aria-label="Zavřít">×</button>
+  <h2 id="helpTitle">O mapě</h2>
+  <p>Izometrická pixel-art mapa: Záchlumí ve stylu SimCity 2000. Roční období, den a noc, počasí a příběhy míst.</p>
+  <h3>Ovládání</h3>
+  <ul>
+    <li><b>Posun a přiblížení:</b> tažení myší nebo prstem, kolečko nebo dva prsty. Dvojklik přiblíží.</li>
+    <li><b>Budova:</b> klikněte na ni a ukáže se název, adresa a odkaz na Mapy.cz.</li>
+    <li><b>Roční období, denní doba a počasí</b> se přepínají v menu. Na mobilu jsou roční období a denní doba i ve spodní liště.</li>
+    <li><b>Hledání</b> zná ulice, adresy, budovy i zajímavá místa.</li>
+    <li><b>Sdílet</b> <span class="ico-inline"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/><path d="M8 10H5v11h14V10h-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></span> zkopíruje odkaz přesně na to, co právě vidíte, včetně ročního období a denní doby.</li>
+  </ul>
+  <p class="muted">Vytvořeno nástrojem <a href="https://github.com/adamklatovsky/izomapa" target="_blank" rel="noopener">izomapa</a> od <a href="https://www.adamklatovsky.cz/" target="_blank" rel="noopener">Adama Klatovského</a> (původní mapa: <a href="https://izomapa.fun" target="_blank" rel="noopener">izometrický Liberec</a>).<br>
+  Mapová data © přispěvatelé <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (ODbL) a Overture Maps, terén Terrarium (AWS Open Data), výšky budov a stromů, ortofoto a ZABAGED © <a href="https://geoportal.cuzk.cz/" target="_blank" rel="noopener">ČÚZK</a> (CC BY 4.0), jízdní řád vlaků podle údajů dopravce České dráhy, a.s..</p>
+</dialog>
+<nav class="mbar" id="mbar" aria-label="Rychlé ovládání">
+  <button class="px-btn" type="button" data-s="spring">Jaro</button>
+  <button class="px-btn" type="button" data-s="summer">Léto</button>
+  <button class="px-btn" type="button" data-s="autumn">Podzim</button>
+  <button class="px-btn" type="button" data-s="winter">Zima</button>
+  <button class="px-btn" type="button" id="mTime">Den</button>
+  <button class="px-btn" type="button" id="mShare" aria-label="Sdílet tento pohled"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/><path d="M8 10H5v11h14V10h-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js"></script>
+<script>
+(async () => {
+
+  const [TILES, OV] = await Promise.all([fetch('tiles.json').then((r) => r.json()), fetch('overlay.json').then((r) => r.json())]);
+  // real wind for chimney smoke; the map camera looks from the south-west, so east is right and up, north is left and up
+  let realWind = null, realWeather = null, applyRealWeather = () => {};
+  const wmoWeather = (c) => (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95 ? 'rain' : (c >= 71 && c <= 77) || c === 85 || c === 86 ? 'snow' : c === 45 || c === 48 ? 'fog' : 'clear';
+  const loadWind = () => fetch(`https://api.open-meteo.com/v1/forecast?latitude=${OV.cam.lat0}&longitude=${OV.cam.lon0}&current=wind_speed_10m,wind_direction_10m,weather_code&wind_speed_unit=ms`)
+    .then((r) => r.json()).then(({ current: c }) => {
+      if (false) { realWeather = wmoWeather(c.weather_code); applyRealWeather(); }
+      if (!false) return;
+      const from = c.wind_direction_10m * Math.PI / 180, e = -Math.sin(from), n = -Math.cos(from);
+      realWind = { dx: 0.7071 * (e - n), dy: -0.3536 * (e + n), strength: Math.min(2.2, Math.max(0.15, c.wind_speed_10m / 3)) };
+    }).catch(() => {});
+  if (false || false) { loadWind(); setInterval(loadWind, 30 * 60 * 1000); }
+  const W = OV.w, Hh = OV.h;
+  const $ = (id) => document.getElementById(id);
+  const isMobile = () => matchMedia('(max-width: 640px)').matches;
+  const state = { season: 'summer', night: 0, weather: 'clear', sel: null, hover: null, wip: false };
+  const hashTokens = (location.hash || '').slice(1).split('@')[0].split('-');
+  const SEASON_TOKEN = { jaro: 'spring', leto: 'summer', podzim: 'autumn', zima: 'winter' };
+  for (const t of hashTokens) { if (SEASON_TOKEN[t]) state.season = SEASON_TOKEN[t]; if (t === 'noc') state.night = 1; if (t === 'soumrak') state.night = 0.42; if (t === 'vse') state.wip = true; }
+  if (state.season === 'winter') state.weather = 'snow';
+  const WIP = Object.values(TILES.chunks || {}).some((c) => c.status !== 'hotovo');
+
+
+  // ---------- OpenSeadragon: vrstvy po čtvercích (den podle ročního období × teplý tón × tma + světla) ----------
+  // souřadnice: pixely čtverce (0, 0), šířka W = 1 v souřadnicích pohledu; ostatní čtverce jsou posunuté
+  const base = TILES.base || { x0: OV.cam.x0, y1: OV.cam.y1, mpp: OV.cam.mpp, status: 'hotovo' };
+  const LAYERS = [{ key: 'c0_0', status: base.status, src: (v) => TILES[v], x: 0, y: 0, w: 1 }];
+  for (const [key, ch] of Object.entries(TILES.chunks || {})) {
+    const any = ch.autumn || ch.lights; if (!any) continue;
+    const dx = (any.x0 - base.x0) / base.mpp, dy = (base.y1 - any.y1) / base.mpp;
+    LAYERS.push({ key, status: ch.status, src: (v) => ch[v], x: dx / W, y: dy / W, w: +any.Image.Size.Width / W });
+  }
+  // pořadí vrstev podle hloubky: pohled od JZ, takže čtverce dál na S a V (větší i + j) se kreslí dřív (níž)
+  const far = (k) => { const [i, j] = k.slice(1).split('_').map(Number); return i + j; };
+  LAYERS.sort((a, b) => far(b.key) - far(a.key));
+  if (!WIP) { $('wipSel').parentElement.hidden = true; state.wip = true; }   // vše hotové: bez přepínače, celá mapa   // bez rozpracovaných čtverců (např. náhled v artefaktu)
+  const shown = (k) => state.wip || (LAYERS.find((l) => l.key === k) || {}).status === 'hotovo';
+  const SLOW = matchMedia('(max-width: 640px)').matches || !!(navigator.connection && (navigator.connection.saveData || /2g|3g/.test(navigator.connection.effectiveType || '')));
+  const viewer = OpenSeadragon({
+    element: $('osd'), tileSources: [],
+    showNavigationControl: false, imageSmoothingEnabled: false,
+    maxZoomPixelRatio: 6, minZoomImageRatio: 0.6, visibilityRatio: 0.4, animationTime: 0.6,
+    // mobil a pomalé připojení: hrubší dlaždice, aby se mapa ukázala hned (při přiblížení se doostří)
+    ...(SLOW ? { minPixelRatio: 1.2, immediateRender: true, imageLoaderLimit: 4 } : { minPixelRatio: 0.6 }),
+    gestureSettingsMouse: { clickToZoom: false, dblClickToZoom: true }, gestureSettingsTouch: { pinchRotate: false },
+  });
+  // verze dlaždic v adrese: dlaždice se cachují na rok, nové nasazení změní verzi (tiles.json se ověřuje vždy)
+  const VER = TILES.ver ? `?v=${TILES.ver}` : '';
+  viewer.world.addHandler('add-item', (e) => { if (e.item.source && e.item.source.tilesUrl !== undefined) e.item.source.queryParams = VER; });
+  const solid = (r, g, b) => { const c = document.createElement('canvas'); c.width = c.height = 2; const x = c.getContext('2d'); x.fillStyle = `rgb(${r},${g},${b})`; x.fillRect(0, 0, 2, 2); return c.toDataURL(); };
+  let warmItem = null, darkItem = null, ready = false;
+  const add = (opts) => new Promise((res) => viewer.addTiledImage({ ...opts, success: (e) => res(e.item), error: () => res(null) }));
+  const layerOpacity = (l) => (shown(l.key) ? 1 : 0);
+  // náhled celé mapy (jeden obrázek ~0,5 MB): ukáže se hned, detailní dlaždice čtverců se doplní pod ním souběžně
+  let previewItem = null, previewGen = 0;
+  async function addPreview(season) {
+    const gen = ++previewGen;
+    try {
+      const pv = await fetch(`preview/${season}.json${VER}`).then((r) => r.json());
+      const it = await add({ tileSource: { type: 'image', url: `preview/${season}.webp${VER}`, buildPyramid: false },
+        x: (pv.x0 - base.x0) / base.mpp / W, y: (base.y1 - pv.y1) / base.mpp / W, width: pv.w * pv.mpp / base.mpp / W, index: 0 });
+      if (it && gen !== previewGen) { viewer.world.removeItem(it); return; }   // mezitím jiné období
+      if (it) { if (previewItem) viewer.world.removeItem(previewItem); previewItem = it; viewer.world.setItemIndex(it, 0); }
+    } catch {}
+  }
+  // pořadí kreslení: náhled, pak čtverce odzadu dopředu (bližší zakryje řez zeminou vzdálenějšího);
+  // při změně období leží stará vrstva čtverce hned pod novou, dokud se nová nenačte
+  const reorder = () => {
+    let k = 0;
+    if (previewItem) viewer.world.setItemIndex(previewItem, k++);
+    for (const l of LAYERS) {
+      if (l.base && l.base !== l.day && viewer.world.getIndexOfItem(l.base) >= 0) viewer.world.setItemIndex(l.base, k++);
+      if (l.day) viewer.world.setItemIndex(l.day, k++);
+    }
+  };
+  async function initLayers() {
+    await addPreview(state.season);
+    $('loading').hidden = true;
+    await Promise.all(LAYERS.map(async (l) => { l.day = l.base = await add({ tileSource: l.src(state.season), x: l.x, y: l.y, width: l.w, opacity: layerOpacity(l) }); }));
+    reorder();
+    // tónování soumraku a noci jen přes pixely mapy (source-atop), jinak byl v noci vidět obdélník kolem mapy
+    warmItem = await add({ tileSource: { type: 'image', url: solid(255, 160, 90) }, x: -60, y: -60, width: 200, opacity: 0, compositeOperation: 'source-atop' });
+    darkItem = await add({ tileSource: { type: 'image', url: solid(14, 20, 52) }, x: -60, y: -60, width: 200, opacity: 0, compositeOperation: 'source-atop' });
+    for (const l of LAYERS) if (l.src('lights')) l.light = await add({ tileSource: l.src('lights'), x: l.x, y: l.y, width: l.w, opacity: 0, compositeOperation: 'lighter', preload: false });
+    for (const n of OV.needs || []) {
+      const el = document.createElement('div'); el.className = 'pin need'; el.textContent = '📷 ' + n.name; el.title = n.text; n.el = el;
+      viewer.addOverlay({ element: el, location: new OpenSeadragon.Point(n.xy[0] / W, n.xy[1] / W), placement: OpenSeadragon.Placement.CENTER, checkResize: false });
+    }
+    for (const p of OV.places) {
+      const el = document.createElement('div'); el.className = 'pin'; el.textContent = p.name; p.el = el;
+      viewer.addOverlay({ element: el, location: new OpenSeadragon.Point(p.xy[0] / W, p.xy[1] / W), placement: OpenSeadragon.Placement.CENTER, checkResize: false });
+    }
+    ready = true; applyVisibility(); applyTime(); loadMini(); tickReal();
+    const b = homeBounds(); viewer.viewport.fitBounds(b, true);
+    // odkaz na místo: #zima-noc@50.76984,15.05836,2 (zeměpisná šířka, délka, přiblížení = šířka výřezu v km)
+    const at = (location.hash.split('@')[1] || '').split(',').map(Number);
+    if (at.length >= 2 && at.every(Number.isFinite)) {
+      const [lat, lon, km] = at, x = (lon - cam.lon0) * cam.kx, y = (lat - cam.lat0) * cam.ky;
+      const [ix, iy] = toImg(x, y, gz(x, y));
+      viewer.viewport.panTo(new OpenSeadragon.Point(ix / W, iy / W), true);
+      viewer.viewport.zoomTo(W * cam.mpp / ((km || 1) * 1000), null, true);
+      if (at[3] === 1) {                                    // ...,1 = značka přesně na místě (odkaz z administrace hlášení)
+        const el = document.createElement('div'); el.className = 'here-pin';
+        viewer.addOverlay({ element: el, location: new OpenSeadragon.Point(ix / W, iy / W), placement: OpenSeadragon.Placement.CENTER, checkResize: false });
+        onChunk.push(() => { const bb = hit(ix, iy); if (bb) state.sel = bb; });   // budovu na místě zvýraznit, jakmile se načtou data
+      }
+    }
+    let hashT = null;
+    viewer.addHandler('animation-finish', () => { clearTimeout(hashT); hashT = setTimeout(() => {
+      const c = viewer.viewport.getCenter(true), [x, y] = imgToWorld(c.x * W, c.y * W), [lon, lat] = lonlat(x, y);
+      const km = viewer.viewport.getBounds(true).width * W * cam.mpp / 1000;
+      const base = location.hash.slice(1).split('@')[0];
+      history.replaceState(null, '', `#${base}@${lat.toFixed(5)},${lon.toFixed(5)},${km.toFixed(2)}`);
+    }, 400); });
+    loadVisible();
+  }
+  function homeBounds() {
+    const vis = LAYERS.filter((l) => shown(l.key));
+    const x0 = Math.min(...vis.map((l) => l.x)), y0 = Math.min(...vis.map((l) => l.y));
+    const x1 = Math.max(...vis.map((l) => l.x + l.w)), y1 = Math.max(...vis.map((l) => l.y + (l.day ? l.day.getBounds().height : 0.56)));
+    return new OpenSeadragon.Rect(x0, y0, x1 - x0, y1 - y0);
+  }
+  viewer.addOnceHandler('open', () => {});
+  initLayers();
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  function applyTime() {
+    const t = state.night;
+    const warm = Math.max(0, 1 - Math.abs(t - 0.42) / 0.32) * 0.8;
+    if (warmItem) warmItem.setOpacity(warm * 0.32);
+    if (darkItem) darkItem.setOpacity(smooth(0.35, 0.95, t) * 0.78);
+    for (const l of LAYERS) if (l.light) l.light.setOpacity(shown(l.key) ? smooth(0.5, 0.95, t) : 0);
+    const d = smooth(0.35, 0.95, t);
+    const mix = (a, b) => Math.round(a + (b - a) * d);
+    $('map').style.background = $('osd').style.background = `rgb(${mix(27 + warm * 30, 9)},${mix(35 + warm * 12, 12)},${mix(51, 24)})`;
+    $('mTime').textContent = t < 0.25 ? 'Den' : t < 0.7 ? 'Soumrak' : 'Noc';
+  }
+  function applyVisibility() {
+    for (const l of LAYERS) if (l.day) l.day.setOpacity(layerOpacity(l));
+    for (const p of OV.places) if (p.el) p.el.hidden = !shown(p.k);
+    for (const n of OV.needs || []) if (n.el) n.el.hidden = !state.wip;
+    document.querySelectorAll('[data-wip]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.wip === '1') === state.wip)));
+    if (typeof renderPlaces === 'function') renderPlaces();
+    applyTime();
+    if (typeof loadVisible === 'function' && ready) loadVisible();
+  }
+  function setSeason(s) {
+    document.querySelectorAll('[data-s]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === s)));
+    if (s === state.season && ready) return;
+    const wasWinter = state.season === 'winter';
+    state.season = s;
+    if (s === 'winter' && state.weather === 'clear') setWeather('snow');
+    if (wasWinter && s !== 'winter' && state.weather === 'snow') setWeather('clear');
+    setWeather(state.weather);
+    if (!ready) return;
+    addPreview(s).then(reorder);
+    // každý čtverec drží jako podklad poslední úplně načtenou vrstvu (l.base) a nad ní novou (l.day);
+    // podklad se smaže až po úplném načtení nové, i kdyby to bylo až po posunu mapy. Jinak by v bližším čtverci
+    // zůstala díra a byl by vidět řez zeminou vzdálenějšího. Nejvýš dvě vrstvy na čtverec.
+    LAYERS.forEach((l) => {
+      const gen = l.gen = (l.gen || 0) + 1;
+      viewer.addTiledImage({ tileSource: l.src(s), x: l.x, y: l.y, width: l.w, opacity: layerOpacity(l), success: (e) => {
+        if (gen !== l.gen) { viewer.world.removeItem(e.item); return; }        // mezitím přepnuto jinam: pozdní vrstva pryč
+        if (l.day && l.day !== l.base) viewer.world.removeItem(l.day);        // nedonačtená mezivrstva (podklad zůstává)
+        l.day = e.item; reorder();                                           // hned na správné místo, ne navrch všeho
+        const settle = () => {
+          if (l.day !== e.item || !e.item.getFullyLoaded()) return;
+          if (l.base && l.base !== e.item) viewer.world.removeItem(l.base);
+          l.base = e.item; reorder();
+        };
+        if (e.item.getFullyLoaded()) settle(); else e.item.addHandler('fully-loaded-change', settle);
+      } });
+    });
+    loadMini();
+  }
+  const snowAllowed = () => state.season === 'autumn' || state.season === 'winter';
+  function setWeather(w) {
+    if (w === 'snow' && !snowAllowed()) w = 'clear';
+    state.weather = w;
+    const sb = document.querySelector('[data-w="snow"]');
+    sb.disabled = !snowAllowed(); sb.title = snowAllowed() ? '' : 'Sníh jen na podzim a v zimě';
+    document.querySelectorAll('[data-w]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.w === w)));
+  }
+  document.querySelectorAll('[data-s]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.s !== state.season) $('realWeather').checked = false; setSeason(b.dataset.s); }));
+  const saveRW = (v) => { try { localStorage.setItem('izo-realweather', v ? '1' : '0'); } catch {} };
+  document.querySelectorAll('[data-w]').forEach((b) => b.addEventListener('click', () => { $('realWeather').checked = false; saveRW(false); setWeather(b.dataset.w); }));
+  applyRealWeather = () => { if ($('realWeather').checked && realWeather) setWeather(realWeather); };
+  $('realWeather').addEventListener('change', (e) => { saveRW(e.target.checked); applyRealWeather(); });
+  if (false) {
+    $('realWeatherRow').hidden = false;
+    let rwOff = false; try { rwOff = localStorage.getItem('izo-realweather') === '0'; } catch {}
+    $('realWeather').checked = !rwOff && !hashTokens.some((t) => SEASON_TOKEN[t] || t === 'noc' || t === 'soumrak');   // sdílený odkaz si drží svůj vzhled
+  }
+  document.querySelectorAll('[data-wip]').forEach((b) => b.addEventListener('click', () => { state.wip = b.dataset.wip === '1'; applyVisibility(); viewer.viewport.fitBounds(homeBounds()); }));
+  document.querySelectorAll('[data-wip]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.wip === '1') === state.wip)));
+  setSeason(state.season); setWeather(state.weather); applyRealWeather();
+  $('night').value = Math.round(state.night * 100);
+  $('night').addEventListener('input', (e) => { state.night = e.target.value / 100; $('realTime').checked = false; saveRT(false); applyTime(); });
+  // denní doba podle skutečné výšky slunce nad městem (zapíná se volitelně, pamatuje si to prohlížeč)
+  function sunAlt(d) {
+    const rad = Math.PI / 180, lat = 50.77, lon = 15.06;
+    const day = (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5;
+    const dec = -23.44 * Math.cos(2 * Math.PI / 365 * (day + 10)) * rad;
+    const hour = d.getUTCHours() + d.getUTCMinutes() / 60 + lon / 15 - 12;          // sluneční čas
+    const ha = hour * 15 * rad;
+    return Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad;
+  }
+  const nightFromSun = (a) => (a > 8 ? 0 : a > 0 ? 0.42 * (1 - a / 8) + 0.0 : a > -7 ? 0.42 + 0.58 * (-a / 7) : 1);
+  const saveRT = (v) => { try { localStorage.setItem('izo-realtime', v ? '1' : '0'); } catch {} };
+  function tickReal() {
+    if (!$('realTime').checked) return;
+    state.night = Math.round(nightFromSun(sunAlt(new Date())) * 100) / 100; $('night').value = Math.round(state.night * 100); applyTime();
+  }
+  $('realTime').addEventListener('change', (e) => { saveRT(e.target.checked); tickReal(); });
+  // výchozí stav: léto, den, skutečný čas vypnutý (zapne si ho každý sám, volba se pak pamatuje)
+  try { if (localStorage.getItem('izo-realtime') === '1' && !hashTokens.includes('noc')) { $('realTime').checked = true; } } catch {}
+  setInterval(tickReal, 60000);
+  $('mTime').addEventListener('click', () => { state.night = state.night < 0.25 ? 0.42 : state.night < 0.7 ? 1 : 0; $('night').value = Math.round(state.night * 100); applyTime(); });
+
+  // ---------- souřadnice ----------
+  const cam = OV.cam;
+  const X = cam.X, Y = cam.Y, Z = [X[1] * Y[2] - X[2] * Y[1], X[2] * Y[0] - X[0] * Y[2], X[0] * Y[1] - X[1] * Y[0]];
+  const toImg = (x, y, h) => [((x * X[0] + h * X[1] - y * X[2]) - cam.x0) / cam.mpp, (cam.y1 - (x * Y[0] + h * Y[1] - y * Y[2])) / cam.mpp];
+  const depth = (x, y, h) => -(x * Z[0] + h * Z[1] - y * Z[2]);
+  const gz = (x, y) => {
+    const G = cam.grounds.find((q) => Math.abs(x - q.cx) <= cam.half && Math.abs(y - q.cy) <= cam.half) || cam.grounds[0];
+    const g = G.g, n = g.length - 1; x -= G.cx; y -= G.cy;
+    const fx = Math.min(Math.max((x + cam.half) / (2 * cam.half) * n, 0), n - 0.001), fy = Math.min(Math.max((cam.half - y) / (2 * cam.half) * n, 0), n - 0.001);
+    const c = Math.floor(fx), r = Math.floor(fy), tx = fx - c, ty = fy - r;
+    return g[r][c] * (1 - tx) * (1 - ty) + g[r][c + 1] * tx * (1 - ty) + g[r + 1][c] * (1 - tx) * ty + g[r + 1][c + 1] * tx * ty;
+  };
+  // výška mostovky pod bodem (jen když vozidlo jede podél mostu, ne pod ním): overlay.json decks
+  const deckZ = (x, y, dx, dy) => {
+    const dl = Math.hypot(dx, dy) || 1;
+    for (const d of OV.decks || []) for (let i = 0; i < d.p.length - 1; i++) {
+      const a = d.p[i], b = d.p[i + 1], ex = b[0] - a[0], ey = b[1] - a[1], el = Math.hypot(ex, ey) || 1;
+      const t = ((x - a[0]) * ex + (y - a[1]) * ey) / (el * el);
+      if (t < -0.05 || t > 1.05 || Math.abs((x - a[0]) * ey - (y - a[1]) * ex) / el > d.w / 2 + 1.5) continue;
+      if (Math.abs((dx * ex + dy * ey) / (dl * el)) < 0.85) continue;
+      return a[2] + (b[2] - a[2]) * Math.max(0, Math.min(1, t));
+    }
+    return null;
+  };
+  function imgToWorld(ix, iy) {
+    const vx = cam.x0 + ix * cam.mpp, vy = cam.y1 - iy * cam.mpp;
+    let h = 60, x = 0, y = 0;
+    for (let i = 0; i < 6; i++) {
+      const a = X[0], b = -X[2], c = Y[0], d = -Y[2], r1 = vx - h * X[1], r2 = vy - h * Y[1], det = a * d - b * c;
+      x = (r1 * d - b * r2) / det; y = (a * r2 - c * r1) / det; h = gz(x, y);
+    }
+    return [x, y];
+  }
+  const lonlat = (x, y) => [x / cam.kx + cam.lon0, y / cam.ky + cam.lat0];
+
+  // ---------- budovy: index pro klikání ----------
+  const CELL = 256, grid = new Map();
+  const addBuildings = (list) => list.forEach((b) => {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [x, y] of b.hull) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    b.bb = [x0, y0, x1, y1];
+    for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) for (let cy = Math.floor(y0 / CELL); cy <= Math.floor(y1 / CELL); cy++) {
+      const k = cx + ',' + cy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(b);
+    }
+  });
+  // data čtverců (budovy, komíny, silnice, voda) se načítají až při přiblížení, viz loadVisible()
+  const CH = {}, chimneys = [];
+  const onChunk = [];
+  function loadChunk(k) {
+    if (CH[k]) return CH[k].ready;
+    CH[k] = { ready: fetch(`overlay/${k}.json`).then((r) => r.json()).then((d) => {
+      Object.assign(CH[k], d);
+      for (const b of d.buildings) b.k = k;
+      addBuildings(d.buildings);
+      chimneys.push(...d.chimneys);
+      for (const f of onChunk) f(k, d);
+      return CH[k];
+    }).catch(() => null) };
+    return CH[k].ready;
+  }
+  function loadVisible() {
+    const vb = viewer.viewport.getBounds(true);
+    if (vb.width > 1.3) return;                         // oddáleno: budovy se neklikají, auta a kouř nejsou vidět
+    for (const l of LAYERS) {
+      if (CH[l.key] || !shown(l.key)) continue;
+      const h = l.w * (l.hrel || 0.56);
+      if (l.x < vb.x + vb.width && l.x + l.w > vb.x && l.y < vb.y + vb.height && l.y + h > vb.y) loadChunk(l.key);
+    }
+  }
+  viewer.addHandler('animation-finish', loadVisible);
+  viewer.addHandler('open', loadVisible);
+  const inPoly = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+  function hit(ix, iy) {
+    let best = null;
+    for (const b of grid.get(Math.floor(ix / CELL) + ',' + Math.floor(iy / CELL)) || []) {
+      if (ix < b.bb[0] || ix > b.bb[2] || iy < b.bb[1] || iy > b.bb[3]) continue;
+      if (shown(b.k) && inPoly(ix, iy, b.hull) && (!best || b.d < best.d)) best = b;
+    }
+    return best;
+  }
+  const placeByName = Object.fromEntries(OV.places.map((p) => [p.name, p]));
+  if (!OV.places.length) $('placesBox').hidden = true;      // bez mista.json
+
+  // ---------- karta ----------
+  const ROOF = { flat: 'plochá', gabled: 'sedlová', hipped: 'valbová', pyramidal: 'stanová' };
+  function showCard({ title, text, rows, lon, lat, k }) {
+    $('cardTitle').textContent = title;
+    if (k && !(LAYERS.find((l) => l.key === k) || {}).status?.startsWith('hotovo')) { const t = document.createElement('span'); t.className = 'wip-tag'; t.textContent = 'Rozpracováno'; $('cardTitle').append(' ', t); }
+    $('cardText').hidden = !text; $('cardText').textContent = text || '';
+    const dl = $('cardDl'); dl.replaceChildren();
+    for (const [k, v] of rows) { if (v === undefined || v === null || v === '') continue; const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); }
+    const links = $('cardLinks'); links.replaceChildren();
+    const a = document.createElement('a'); a.target = '_blank'; a.rel = 'noopener';
+    a.href = `https://mapy.cz/zakladni?x=${lon.toFixed(6)}&y=${lat.toFixed(6)}&z=19&source=coor&id=${lon.toFixed(6)}%2C${lat.toFixed(6)}`;
+    a.textContent = 'Ukázat ve skutečnosti (Mapy.cz)';
+    const s = document.createElement('a'); s.target = '_blank'; s.rel = 'noopener';
+    s.href = `https://mapy.cz/letecka?x=${lon.toFixed(6)}&y=${lat.toFixed(6)}&z=19`; s.textContent = 'Letecký snímek';
+    links.append(a, s);
+    $('card').style.transform = '';
+    $('card').hidden = false;
+    setReport(`pt:${lat.toFixed(5)},${lon.toFixed(5)}`, title, lon, lat);     // výchozí cíl hlášení = místo, budova ho přepíše
+  }
+  // hlášení nepřesností: jen když je zapnuté v mesto.json ("hlaseni": true) a běží server z hlaseni/
+  const HLASENI = false;
+  $('report').hidden = !HLASENI;
+  let repTarget = null;
+  const repMsg = (t, cls) => { $('repMsg').textContent = t; $('repMsg').className = cls ? 'rep-' + cls : ''; };
+  function setReport(target, title, lon, lat) {
+    repTarget = { target, title, lon, lat };
+    $('report').open = false; repMsg('', ''); $('repNote').value = '';
+  }
+  $('reportForm').addEventListener('submit', async (e) => {
+    e.preventDefault(); if (!repTarget) return;
+    if ($('repNote').value.trim().length < 3) { repMsg('Napište prosím, co tu nesedí (aspoň pár slov).', 'err'); return; }
+    $('reportForm').querySelector('button').disabled = true;
+    repMsg('Odesílám…', '');
+    try {
+      const r = await fetch('api/report', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...repTarget, note: $('repNote').value.trim() }) });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) { $('repNote').value = ''; repMsg('Díky! Hlášení je odeslané.', 'ok'); }
+      else repMsg(d.msg || 'Hlášení se nepovedlo odeslat. Zkuste to prosím za chvíli.', 'err');
+    } catch { repMsg('Hlášení teď nejde odeslat (bez připojení?). Zkuste to prosím později.', 'err'); }
+    $('reportForm').querySelector('button').disabled = false;
+  });
+  // speciální místo k budově: špendlík místa leží v obrysu budovy a budova je do 35 m (OSM má jiné názvy, „sv. Jan Křtitel“)
+  const geoM = (lat, lon, p) => Math.hypot(lat - p.lat, (lon - p.lon) * Math.cos(p.lat * Math.PI / 180)) * 111320;
+  function placeOf(b) {
+    let best = null, bd = 35;
+    for (const p of OV.places) { const d = geoM(b.lat, b.lon, p); if (d < bd && inPoly(p.xy[0], p.xy[1], b.hull)) { best = p; bd = d; } }
+    return best;
+  }
+  function showBuilding(b) {
+    state.sel = b;
+    const pl = placeOf(b);
+    const nm = pl ? pl.name : b.name;
+    const story = (pl && pl.text) || b.text || (nm && placeByName[nm] ? placeByName[nm].text : null);
+    const title = nm || b.cls[0].toUpperCase() + b.cls.slice(1);
+    showCard({ title, text: story, lon: b.lon, lat: b.lat, k: b.k, rows: [
+      ['Adresa', (b.addr || []).join(', ')], ['Typ', nm ? b.cls : null],
+    ] });
+    setReport(b.oid ? 'b:' + b.oid : b.id, [title, (b.addr || [])[0]].filter(Boolean).join(', '), b.lon, b.lat);
+  }
+  function showPoint(ix, iy) {
+    state.sel = null;
+    const [x, y] = imgToWorld(ix, iy); const [lon, lat] = lonlat(x, y);
+    // místo bez budovy (náměstí, hřbitov, přehrada): klik do 40 m od jeho špendlíku (1 px = 0,2 m)
+    let pl = null, bd = 200;
+    for (const p of OV.places) { if (!shown(p.k)) continue; const d = Math.hypot(ix - p.xy[0], iy - p.xy[1]); if (d < bd) { pl = p; bd = d; } }
+    if (pl) { showCard({ title: pl.name, text: pl.text, lon: pl.lon, lat: pl.lat, k: pl.k, rows: [] }); return; }
+    showCard({ title: 'Vybrané místo', rows: [], lon, lat });
+  }
+  const closeCard = () => { $('card').hidden = true; state.sel = null; };
+  $('cardClose').addEventListener('click', closeCard);
+  // mobil: kartu jde stáhnout prstem dolů
+  { let y0 = null;
+    const card = $('card');
+    card.addEventListener('pointerdown', (e) => { if (isMobile() && (e.target === $('grab') || card.scrollTop === 0)) { y0 = e.clientY; } });
+    card.addEventListener('pointermove', (e) => { if (y0 !== null) { const d = Math.max(0, e.clientY - y0); card.style.transform = `translateY(${d}px)`; } });
+    const end = (e) => { if (y0 === null) return; const d = e.clientY - y0; y0 = null; if (d > 70) closeCard(); else card.style.transform = ''; };
+    card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+  }
+
+  const vpToImg = (pos) => { const p = viewer.viewport.viewerElementToViewportCoordinates(pos); return [p.x * W, p.y * W]; };
+  viewer.addHandler('canvas-click', (e) => {
+    if (!e.quick) return;
+    const v = MHD.drawn.find((q) => Math.hypot(q[0] - e.position.x, q[1] - e.position.y) < 18);
+    if (v) { mhdFollow(v[2]); return; }
+    const [ix, iy] = vpToImg(e.position);
+    const b = hit(ix, iy);
+    if (b) showBuilding(b); else showPoint(ix, iy);
+  });
+  $('osd').addEventListener('pointermove', (e) => {
+    if (!$('l-hover').checked || e.pointerType === 'touch') { state.hover = null; return; }
+    const r = $('osd').getBoundingClientRect();
+    const [ix, iy] = vpToImg(new OpenSeadragon.Point(e.clientX - r.left, e.clientY - r.top));
+    state.hover = hit(ix, iy);
+    $('osd').style.cursor = state.hover ? 'pointer' : '';
+  });
+
+
+  // ---------- navigace, hledání ----------
+  function goTo(ix, iy, zoomImg = 1.6) {
+    viewer.viewport.panTo(new OpenSeadragon.Point(ix / W, iy / W));
+    viewer.viewport.zoomTo(zoomImg * W / viewer.viewport.getContainerSize().x);
+    if (isMobile()) setMenu(false);
+  }
+  const placesUl = $('places');
+  const placesAbc = [...OV.places].sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+  var renderPlaces = () => {
+    placesUl.replaceChildren();
+    for (const p of placesAbc) {
+      if (!shown(p.k)) continue;
+      const li = document.createElement('li'); const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name;
+      b.addEventListener('click', () => { goTo(p.xy[0], p.xy[1], 1.4); showCard({ title: p.name, text: p.text, lon: p.lon, lat: p.lat, k: p.k, rows: [] }); });
+      li.appendChild(b); placesUl.appendChild(li);
+    }
+  };
+  renderPlaces();
+  const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const index = [];
+  for (const p of OV.places) index.push({ label: p.name, kind: 'místo', k: p.k, n: norm(p.name), go: () => { goTo(p.xy[0], p.xy[1], 1.4); showCard({ title: p.name, text: p.text, lon: p.lon, lat: p.lat, k: p.k, rows: [] }); } });
+  for (const s of OV.streets) index.push({ label: s.name, kind: 'ulice', k: s.k, n: norm(s.name), go: () => goTo(s.xy[0], s.xy[1], 0.9) });
+  // adresy celé mapy jsou ve zvláštním souboru, načtou se při prvním psaní do hledání
+  let addrLoad = null;
+  const loadAddr = () => addrLoad || (addrLoad = fetch('search.json').then((r) => r.json()).then((A) => {
+    for (const [a, k, cx, cy, i, kind] of A) index.push({ label: a, kind: kind || 'adresa', k, n: norm(a), go: () => { goTo(cx, cy, 2); loadChunk(k).then((c) => c && showBuilding(c.buildings[i])); } });
+  }).catch(() => {}));
+  $('q').addEventListener('focus', loadAddr);
+  let res = [], cur = -1;
+  function renderResults() {
+    const ul = $('results'); ul.replaceChildren();
+    res.forEach((r, i) => {
+      const li = document.createElement('li'); const b = document.createElement('button'); b.type = 'button';
+      if (i === cur) b.className = 'on';
+      const s1 = document.createElement('span'); s1.textContent = r.label; const s2 = document.createElement('small'); s2.textContent = r.kind;
+      b.append(s1, s2); b.addEventListener('click', () => pick(r)); li.appendChild(b); ul.appendChild(li);
+    });
+  }
+  function pick(r) { r.go(); $('q').value = r.label; res = []; cur = -1; renderResults(); }
+  $('q').addEventListener('input', (e) => {
+    const q = norm(e.target.value.trim());
+    cur = -1;
+    if (q.length < 2) { res = []; renderResults(); return; }
+    if (!addrLoad) { loadAddr().then(() => e.target.dispatchEvent(new Event('input'))); }
+    const pool = index.filter((r) => shown(r.k)), seenL = new Set();
+    const starts = pool.filter((r) => r.n.startsWith(q)), inside = pool.filter((r) => !r.n.startsWith(q) && r.n.includes(q));
+    const order = { 'místo': 0, budova: 1, ulice: 2, adresa: 3 };
+    res = [...starts, ...inside].filter((r) => !seenL.has(r.kind + r.label) && seenL.add(r.kind + r.label)).sort((a, b) => (a.n.startsWith(q) === b.n.startsWith(q) ? order[a.kind] - order[b.kind] : 0)).slice(0, 8);
+    renderResults();
+  });
+  $('q').addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { cur = Math.min(res.length - 1, cur + 1); renderResults(); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { cur = Math.max(0, cur - 1); renderResults(); e.preventDefault(); }
+    if (e.key === 'Enter' && res.length) pick(res[Math.max(cur, 0)]);
+    if (e.key === 'Escape') { res = []; renderResults(); }
+  });
+
+  const zbtn = (id, f) => $(id).addEventListener('click', f);
+  zbtn('zin', () => viewer.viewport.zoomBy(1.6));
+  zbtn('zout', () => viewer.viewport.zoomBy(1 / 1.6));
+  zbtn('home', () => viewer.viewport.fitBounds(homeBounds()));
+  $('help').addEventListener('click', (e) => { e.stopPropagation(); $('helpDlg').showModal(); });
+  $('helpClose').addEventListener('click', () => $('helpDlg').close());
+  $('helpDlg').addEventListener('click', (e) => { if (e.target === $('helpDlg')) $('helpDlg').close(); });
+  // sdílení: odkaz obsahuje polohu, přiblížení, roční období a denní dobu (#zima-noc@50.77,15.06,0.8)
+  async function share() {
+    const tok = [{ spring: 'jaro', summer: 'leto', autumn: 'podzim', winter: 'zima' }[state.season]];
+    if (state.night > 0.7) tok.push('noc'); else if (state.night > 0.25) tok.push('soumrak');
+    const url = `${location.origin}${location.pathname}#${tok.join('-')}@${(location.hash.split('@')[1] || '')}`;
+    const toast = (t) => { $('toast').textContent = t; $('toast').hidden = false; clearTimeout(share.t); share.t = setTimeout(() => { $('toast').hidden = true; }, 2200); };
+    try {
+      if (navigator.share && isMobile()) { await navigator.share({ title: document.title, url }); return; }
+      await navigator.clipboard.writeText(url); toast('Odkaz na tento pohled je zkopírovaný');
+    } catch { toast(url); }
+  }
+  zbtn('share', share); zbtn('mShare', share);
+  function setMenu(open) { $('panel').classList.toggle('closed', !open); $('menu').setAttribute('aria-expanded', String(open)); $('menu').textContent = open ? 'Skrýt' : 'Menu'; }
+  $('menu').addEventListener('click', () => setMenu($('panel').classList.contains('closed')));
+  // desktop: panel jde zasunout ouškem vpravo od něj, stav si pamatuje prohlížeč
+  function setFold(f) {
+    document.body.classList.toggle('folded', f);
+    const t = f ? 'Vysunout panel' : 'Zasunout panel';
+    $('fold').textContent = f ? '›' : '‹'; $('fold').title = t; $('fold').setAttribute('aria-label', t); $('fold').setAttribute('aria-expanded', String(!f));
+    $('panel').inert = f && !isMobile();
+    try { localStorage.setItem('izo-fold', f ? '1' : '0'); } catch {}
+  }
+  $('fold').addEventListener('click', () => setFold(!document.body.classList.contains('folded')));
+  new ResizeObserver(() => document.documentElement.style.setProperty('--pw', $('panel').offsetWidth + 'px')).observe($('panel'));
+  try { if (localStorage.getItem('izo-fold') === '1' && !isMobile()) setFold(true); } catch {}
+  if (isMobile()) { setMenu(false); $('placesBox').open = false; }
+  $('l-labels').addEventListener('change', (e) => $('map').classList.toggle('nolabels', !e.target.checked));
+
+  // ---------- minimapa ----------
+  const mini = $('mini'), mctx = mini.getContext('2d');
+  let miniImgs = {}, HB = null;
+  function loadMini() {
+    for (const l of LAYERS) {
+      const d = l.src(state.season); if (!d) continue;
+      const w = +d.Image.Size.Width, h = +d.Image.Size.Height;
+      const maxl = Math.ceil(Math.log2(Math.max(w, h))), k = Math.ceil(Math.log2(w / 440));
+      const img = new Image(); img.onload = () => { miniImgs[l.key] = img; }; img.src = d.Image.Url + `${maxl - k}/0_0.${d.Image.Format || "png"}${VER}`;
+      l.hrel = h / w;
+    }
+  }
+  function drawMini() {
+    HB = homeBounds();
+    const s = mini.width / HB.width, mh = Math.round(HB.height * s);
+    if (mini.height !== mh) mini.height = mh;
+    mctx.fillStyle = '#1b2333'; mctx.fillRect(0, 0, mini.width, mini.height);
+    mctx.imageSmoothingEnabled = false;
+    for (const l of LAYERS) if (shown(l.key) && miniImgs[l.key]) mctx.drawImage(miniImgs[l.key], (l.x - HB.x) * s, (l.y - HB.y) * s, l.w * s, l.w * (l.hrel || 0.56) * s);
+    if (state.night > 0.35) { mctx.fillStyle = `rgba(10,14,40,${(smooth(0.35, 0.95, state.night) * 0.6).toFixed(2)})`; mctx.fillRect(0, 0, mini.width, mini.height); }
+    const b = viewer.viewport.getBounds(true);
+    mctx.strokeStyle = '#f2c66d'; mctx.lineWidth = 2;
+    mctx.strokeRect(Math.round((b.x - HB.x) * s) + 1, Math.round((b.y - HB.y) * s) + 1, Math.max(4, Math.round(b.width * s)), Math.max(4, Math.round(b.height * s)));
+  }
+  { let drag = false;
+    const go = (e) => { if (!HB) return; const r = mini.getBoundingClientRect(), s = HB.width / r.width; viewer.viewport.panTo(new OpenSeadragon.Point(HB.x + (e.clientX - r.left) * s, HB.y + (e.clientY - r.top) * s)); };
+    mini.addEventListener('pointerdown', (e) => { drag = true; mini.setPointerCapture(e.pointerId); go(e); });
+    mini.addEventListener('pointermove', (e) => { if (drag) go(e); });
+    mini.addEventListener('pointerup', () => { drag = false; });
+  }
+
+  // ---------- animovaná vrstva ----------
+  const fx = $('fx'), ctx = fx.getContext('2d');
+  const rnd = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const DISTRICTS = (OV.districts || []).slice().sort((p, q) => q.a - p.a);
+  const DISPLAY_FONT = getComputedStyle(document.documentElement).getPropertyValue('--display').trim() || 'monospace';
+  const sid = (str) => { let h = 7; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h) % 1000003; };
+  const occluded = (ix, iy, d) => {
+    for (const b of grid.get(Math.floor(ix / CELL) + ',' + Math.floor(iy / CELL)) || [])
+      if (shown(b.k) && b.d < d - 3 && ix >= b.bb[0] && ix <= b.bb[2] && iy >= b.bb[1] && iy <= b.bb[3] && inPoly(ix, iy, b.hull)) return true;
+    return false;
+  };
+  // silniční graf
+  const roads = [], ends = new Map(), cars = [];
+  const ek = (p) => Math.round(p[0]) + ',' + Math.round(p[1]);
+  const CARC = ['#ecebe6', '#b3b8bf', '#2a2c31', '#b8291f', '#33529e', '#62666d', '#3d6b4c', '#cdbd99'];
+  // silnice čtverce: napojit na graf (konce se potkají i přes šev) a přidat auta
+  onChunk.push((k, d) => {
+    const i0 = roads.length;
+    for (const r of d.roads) {
+      const len = [0]; for (let i = 1; i < r.w.length; i++) len.push(len[i - 1] + Math.hypot(r.w[i][0] - r.w[i - 1][0], r.w[i][1] - r.w[i - 1][1]));
+      if (len[len.length - 1] > 5) roads.push({ ...r, k, len, L: len[len.length - 1] });
+    }
+    for (let i = i0; i < roads.length; i++) { const r = roads[i]; for (const [end, dir] of [[r.w[0], 1], [r.w[r.w.length - 1], -1]]) { const q = ek(end); if (!ends.has(q)) ends.set(q, []); ends.get(q).push([i, dir]); } }
+    const main = []; for (let i = i0; i < roads.length; i++) if (roads[i].c !== 'service') main.push(i);
+    const n0 = cars.length, n = Math.min(110, Math.round(main.length / 6));
+    for (let j = 0; j < n && main.length; j++) {
+      const i = n0 + j, r_ = main[Math.floor(rnd(i) * main.length)], c = { r: r_, dir: roads[r_].o || (rnd(i + 9) > 0.5 ? 1 : -1), s: rnd(i + 3) * 50, v: 7 + rnd(i + 5) * 6, col: CARC[i % CARC.length] };
+      if (c.dir < 0) c.s = roads[c.r].L - c.s;
+      cars.push(c);
+    }
+  });
+  function along(r, s) {
+    const L = r.len; let i = 1; while (i < L.length - 1 && L[i] < s) i++;
+    const t = Math.max(0, Math.min(1, (s - L[i - 1]) / ((L[i] - L[i - 1]) || 1)));
+    const a = r.w[i - 1], b = r.w[i], pa = r.p[i - 1], pb = r.p[i];
+    return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, ix: pa[0] + (pb[0] - pa[0]) * t, iy: pa[1] + (pb[1] - pa[1]) * t, d: pa[2] + (pb[2] - pa[2]) * t, dx: b[0] - a[0], dy: b[1] - a[1] };
+  }
+  function stepCar(c, dt) {
+    c.s += c.v * dt * c.dir;
+    const r = roads[c.r];
+    if (c.s < 0 || c.s > r.L) {
+      const endPt = c.s < 0 ? r.w[0] : r.w[r.w.length - 1];
+      const opts = (ends.get(ek(endPt)) || []).filter(([i, dir]) => i !== c.r && roads[i].c !== 'service' && (!roads[i].o || roads[i].o === dir));
+      if (opts.length) { const [i, dir] = opts[Math.floor(Math.random() * opts.length)]; c.r = i; c.dir = dir; c.s = dir > 0 ? 0 : roads[i].L; }
+      else if (r.o) {                  // konec jednosměrky: otočit se nesmí, auto se objeví jinde
+        let i = c.r; for (let k = 0; k < 20; k++) { i = Math.floor(Math.random() * roads.length); if (roads[i].c !== 'service') break; }
+        c.r = i; c.dir = roads[i].o || 1; c.s = c.dir > 0 ? 0 : roads[i].L;
+      }
+      else { c.dir *= -1; c.s = Math.max(0, Math.min(r.L, c.s)); }
+    }
+  }
+  const bus = (() => {
+    if (!OV.bus) return null;
+    const w = OV.bus.w; if (w.length < 2) return null;
+    const len = [0]; for (let i = 1; i < w.length; i++) len.push(len[i - 1] + Math.hypot(w[i][0] - w[i - 1][0], w[i][1] - w[i - 1][1]));
+    const r = { w, p: OV.bus.p, len, L: len[len.length - 1] };
+    const stopS = OV.bus.stops.map(([sx, sy]) => { let best = 0, bd = 1e18; r.p.forEach((p, i) => { const d = (p[0] - sx) ** 2 + (p[1] - sy) ** 2; if (d < bd) { bd = d; best = i; } }); return len[best]; });
+    return { r, s: 0, dir: 1, v: 9, wait: 3, stopS };
+  })();
+  // tramvaje: linky z overlay.json, na každé několik souprav (dva články), jezdí tam a zpět a stojí v zastávkách
+  const trams = (OV.trams || []).flatMap((t) => {
+    const w = t.w, len = [0]; for (let i = 1; i < w.length; i++) len.push(len[i - 1] + Math.hypot(w[i][0] - w[i - 1][0], w[i][1] - w[i - 1][1]));
+    const r = { w, p: t.p, len, L: len[len.length - 1] };
+    const stopS = t.stops.map(([sx, sy]) => { let best = 0, bd = 1e18; r.p.forEach((p, i) => { const d = (p[0] - sx) ** 2 + (p[1] - sy) ** 2; if (d < bd) { bd = d; best = i; } }); return len[best]; });
+    return Array.from({ length: t.n }, (_, j) => ({ r, s: r.L * (j + 0.5) / t.n, dir: j % 2 ? -1 : 1, v: 8, wait: 0, stopS }));
+  });
+  // MHD podle jízdních řádů GTFS (site/mhd.json z mhd.py): poloha každého spoje podle skutečného času
+  const MHD = { on: false, act: [], t: -1, drawn: [], follow: null };
+  fetch('mhd.json' + VER).then((r) => r.json()).then((m) => {
+    m.shapes = m.shapes.map((w) => { const len = [0]; for (let i = 1; i < w.length; i++) len.push(len[i - 1] + Math.hypot(w[i][0] - w[i - 1][0], w[i][1] - w[i - 1][1])); return { w, len, L: len[len.length - 1] }; });
+    m.dur = m.trips.map((t) => t[4][t[4].length - 2]);
+    m.maxDur = Math.max(...m.dur);
+    Object.assign(MHD, m, { on: true });
+  }).catch(() => {});
+  const pragueNow = () => {                                // datum, den v týdnu (po = 0) a sekundy od půlnoci (čas v Česku)
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'short', hour12: false })
+      .formatToParts(new Date()).map((q) => [q.type, q.value]));
+    return { d: +(p.year + p.month + p.day), wd: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(p.weekday), s: (+p.hour % 24) * 3600 + +p.minute * 60 + +p.second + (Date.now() % 1000) / 1000 };
+  };
+  const ymd = (d) => +`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  function mhdServices(d, wd, strict) {                    // služby jízdního řádu platné v daný den
+    const on = new Set();
+    for (const [id, [days, from, to, add, rem]] of Object.entries(MHD.services)) {
+      if (rem.includes(d)) continue;
+      if (add.includes(d) || (days[wd] && (!strict || (d >= from && d <= to)))) on.add(id);
+    }
+    return on;
+  }
+  function mhdActive() {                                   // jedoucí spoje (dnešní i ty, co vyjely včera před půlnocí)
+    const n = pragueNow(), y = new Date(); y.setDate(y.getDate() - 1);
+    let today = mhdServices(n.d, n.wd, true);
+    if (!MHD.trips.some((t) => today.has(t[2]))) today = mhdServices(n.d, n.wd, false);   // prošlý jízdní řád: aspoň podle dne v týdnu
+    const yest = mhdServices(ymd(y), (n.wd + 6) % 7, false), out = [];
+    for (const [svc, t] of [[today, n.s], [yest, n.s + 86400]]) {
+      const T = MHD.trips; let lo = 0, hi = T.length;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (T[m][3] < t - MHD.maxDur) lo = m + 1; else hi = m; }
+      for (let i = lo; i < T.length && T[i][3] <= t; i++) if (svc.has(T[i][2]) && t - T[i][3] <= MHD.dur[i]) out.push([i, t - T[i][3]]);
+    }
+    return out;
+  }
+  function mhdFollow(i) {                                  // kliknutí na vozidlo: pohled jede za ním, lišta ukazuje linku, cíl a další zastávku
+    MHD.follow = i; $('follow').hidden = false; mhdFollowText(); closeCard();
+  }
+  function mhdFollowText() {
+    const i = MHD.follow, a = MHD.act.find((q) => q[0] === i);
+    if (!a) { $('followTxt').textContent = 'Spoj dojel do cílové zastávky.'; MHD.follow = null; setTimeout(() => { if (MHD.follow === null) $('follow').hidden = true; }, 4000); return; }
+    const t = MHD.trips[i], [line, typ] = MHD.routes[t[0]], z = t[6]; let next = '';
+    for (let k = 0; k < z.length; k += 2) if (z[k + 1] >= a[1]) { next = MHD.names[z[k]]; break; }
+    const b = document.createElement('b'); b.textContent = `${typ === 2 ? 'Vlak' : typ === 0 ? 'Tramvaj' : 'Autobus'} ${line}`;
+    $('followTxt').replaceChildren(b, ` → ${MHD.names[t[5]]}`, next ? ` · další zastávka ${next}` : '');
+  }
+  $('followStop').addEventListener('click', () => { MHD.follow = null; $('follow').hidden = true; });
+  viewer.addHandler('canvas-drag', () => { if (MHD.follow !== null) { MHD.follow = null; $('follow').hidden = true; } });
+  function mhdPos(trip, el) {                              // kde na trase je spoj el sekund po výjezdu
+    const q = trip[4]; let i = 2; while (i < q.length - 2 && q[i] < el) i += 2;
+    const f = Math.max(0, Math.min(1, (el - q[i - 2]) / ((q[i] - q[i - 2]) || 1)));
+    const sh = MHD.shapes[trip[1]], s = Math.min(sh.L, q[i - 1] + (q[i + 1] - q[i - 1]) * f), L = sh.len;
+    let k = 1; while (k < L.length - 1 && L[k] < s) k++;
+    const a = sh.w[k - 1], b = sh.w[k], u = Math.max(0, Math.min(1, (s - L[k - 1]) / ((L[k] - L[k - 1]) || 1)));
+    const x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u, h = deckZ(x, y, b[0] - a[0], b[1] - a[1]) ?? gz(x, y), [ix, iy] = toImg(x, y, h);
+    return { x, y, ix, iy, dx: b[0] - a[0], dy: b[1] - a[1], dirSign: 1 };
+  }
+  function stepShuttle(b, dt, stopWait, endWait) {
+    if (b.wait > 0) { b.wait -= dt; return; }
+    const prev = b.s; b.s += b.v * dt * b.dir;
+    for (const s of b.stopS) if ((prev - s) * (b.s - s) <= 0 && Math.abs(prev - s) > 0.01) { b.s = s; b.wait = stopWait; }
+    if (b.s >= b.r.L || b.s <= 0) { b.dir *= -1; b.s = Math.max(0, Math.min(b.r.L, b.s)); b.wait = endWait; }
+  }
+  // lyžaři: v zimě sjíždějí sjezdovky (data shora dolů) obloučky, dole se objeví znovu nahoře
+  const skiers = [], SKIC = ['#d8352a', '#2f6fd1', '#f2c230', '#2aa36b', '#e0629a', '#f07a24', '#1d1f24', '#7b4fc9'];
+  onChunk.push((k, d) => {
+    for (const pl of d.pistes || []) {
+      const len = [0]; for (let i = 1; i < pl.length; i++) len.push(len[i - 1] + Math.hypot(pl[i][0] - pl[i - 1][0], pl[i][1] - pl[i - 1][1]));
+      const r = { w: pl, len, L: len[len.length - 1], k };
+      if (r.L < 40) continue;
+      const n = Math.max(1, Math.round(r.L / 80));
+      for (let j = 0; j < n; j++) {
+        const i = skiers.length + 1;
+        skiers.push({ r, s: r.L * j / n + rnd(i) * 30, v: 5 + rnd(i + 1) * 5, amp: 3 + rnd(i + 2) * 9, wl: 22 + rnd(i + 3) * 30, ph: rnd(i + 4) * 6.3,
+                      col: SKIC[i % SKIC.length], hat: SKIC[(i * 3 + 1) % SKIC.length] });
+      }
+    }
+  });
+  if (location.hostname === 'localhost') window.__izo = { trams, skiers, MHD, mhdActive, mhdPos };       // ladění v lokálním náhledu
+  function drawSkier(q, sx, ox, oy) {
+    const L = q.r.len; let i = 1; while (i < L.length - 1 && L[i] < q.s) i++;
+    const a = q.r.w[i - 1], b = q.r.w[i], t = Math.max(0, Math.min(1, (q.s - L[i - 1]) / ((L[i] - L[i - 1]) || 1)));
+    const dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.hypot(dx, dy) || 1, ph = q.s / q.wl * Math.PI * 2 + q.ph, off = Math.sin(ph) * q.amp;
+    const x = a[0] + dx * t - dy / dl * off, y = a[1] + dy * t + dx / dl * off, h = gz(x, y);
+    const p = toImg(x, y, h);
+    if (occluded(p[0], p[1], depth(x, y, h))) return;
+    for (const q of treeShapes(x, y, h, [p[0] - 1, p[1] - 9, p[0] + 1, p[1]]))
+      if (q[0] === 1 ? ((p[0] - q[1][0]) / q[2]) ** 2 + ((p[1] - 4 - q[1][1]) / q[3]) ** 2 < 1 : p[1] - 4 > q[1][1] && p[1] - 4 < q[2][1] && Math.abs(p[0] - q[1][0]) < q[3] * (p[1] - 4 - q[1][1]) / (q[2][1] - q[1][1])) return;
+    const top = toImg(x, y, h + 1.8), u = Math.max(1, Math.round((p[1] - top[1]) * sx / 8));
+    const X = Math.round(ox + p[0] * sx), Y = Math.round(oy + p[1] * sx), lean = Math.cos(ph) > 0 ? 1 : -1;
+    const R = (cx, cy, w, hh, c) => { ctx.fillStyle = c; ctx.fillRect(X + cx * u, Y - cy * u, w * u, hh * u); };
+    R(-3, 1, 6, 1, '#2a2c31');                         // lyže
+    R(-1, 3, 2, 2, '#2a2c31');                         // nohy
+    R(-1 + (lean > 0 ? 0 : -1), 6, 3, 3, q.col);       // bunda, předklon do oblouku
+    R(lean > 0 ? 0 : -1, 7, 2, 1, '#e8c6a4');          // obličej
+    R(lean > 0 ? 0 : -1, 8, 2, 1, q.hat);              // čepice
+    R(lean > 0 ? 2 : -3, 4, 1, 3, '#9aa0a8');          // hůlka
+  }
+  // jedoucí vozidla: stejný model jako zaparkovaná auta v renderu (karoserie, prosklení, střecha, 4 kola), stěny stínované
+  // stejným sluncem (od jihovýchodu). Kreslí se jako render: do malého obrázku v rozlišení mapy (1 px = cam.mpp),
+  // s tmavým obrysem, a zvětší se bez vyhlazení. Obrázky se cachují podle barvy a směru (48 směrů).
+  const SUNV = (() => { const v = [0.38, -0.68, 0.62], n = Math.hypot(...v); return v.map((q) => q / n); })();
+  const RGB = {}, rgbOf = (hex) => RGB[hex] || (RGB[hex] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+  const lit = (rgb, d) => { const f = (0.62 + 0.42 * Math.max(0, d)) / 0.88; return `rgb(${rgb.map((q) => Math.min(255, Math.round(q * f))).join(',')})`; };
+  const VEH = new Map(), NDIR = 48;
+  function vehicleSprite(col, k, isBus, len, wid, snowy) {
+    const key = `${col}|${k}|${isBus ? +isBus : 0}|${snowy ? 1 : 0}`;      // isBus: 1 autobus, 2 tramvaj
+    if (VEH.has(key)) return VEH.get(key);
+    const a = k / NDIR * Math.PI * 2, fx_ = Math.cos(a), fy_ = Math.sin(a), sxv = -fy_, syv = fx_;
+    const O = toImg(0, 0, 0), R = (s, t, h) => { const p = toImg(fx_ * s + sxv * t, fy_ * s + syv * t, h); return [p[0] - O[0], p[1] - O[1]]; };
+    const l = len / 2, w = wid / 2, faces = [];
+    const vis = (nx, ny) => nx + ny < 0;                                   // normála míří ke kameře (na jihozápad)
+    const sun = (nx, ny, nz) => nx * SUNV[0] + ny * SUNV[1] + nz * SUNV[2];
+    const box = (s0, s1, t0, t1, z0, z1, rgb, topRgb) => {
+      for (const [nx, ny, A, B] of [[fx_, fy_, [s1, t0], [s1, t1]], [-fx_, -fy_, [s0, t1], [s0, t0]], [sxv, syv, [s1, t1], [s0, t1]], [-sxv, -syv, [s0, t0], [s1, t0]]])
+        if (vis(nx, ny)) faces.push([[R(A[0], A[1], z0), R(B[0], B[1], z0), R(B[0], B[1], z1), R(A[0], A[1], z1)], lit(rgb, sun(nx, ny, 0))]);
+      faces.push([[R(s0, t0, z1), R(s1, t0, z1), R(s1, t1, z1), R(s0, t1, z1)], lit(topRgb || rgb, sun(0, 0, 1))]);
+    };
+    const c = rgbOf(col), DARK = [31, 31, 33], GLASS = [71, 87, 107], snow = snowy ? [238, 242, 248] : null;
+    const near = vis(sxv, syv) ? 1 : -1;                                     // strana přivrácená ke kameře
+    const wheels = (side) => { if (isBus >= 2) return; for (const s_ of isBus ? [-l + 2.6, l - 3.0] : [-1.35, 1.35]) box(s_ - (isBus ? 0.48 : 0.32), s_ + (isBus ? 0.48 : 0.32), side * (w - 0.06) - 0.1, side * (w - 0.06) + 0.1, 0, isBus ? 0.8 : 0.62, DARK); };
+    wheels(-near);
+    if (isBus === 3) {                                                      // vlak: obecná modrá motorová jednotka
+      const BL = [38, 88, 164], WH = [238, 240, 236], GL = [38, 44, 54], DOOR = [244, 196, 28], ROOF = snow || [204, 208, 212];
+      const ch = 1.3, fp = [[-l + ch, -w], [l - ch, -w], [l, -w * 0.55], [l, w * 0.55], [l - ch, w], [-l + ch, w], [-l, w * 0.55], [-l, -w * 0.55]];
+      const bands = [[0.25, 0.65, DARK], [0.65, 1.3, BL], [1.3, 1.46, WH], [1.46, 2.55, null], [2.55, 3.45, BL]];
+      const Q = (A, B, z0, z1, rgb, d) => faces.push([[R(A[0], A[1], z0), R(B[0], B[1], z0), R(B[0], B[1], z1), R(A[0], A[1], z1)], lit(rgb, d)]);
+      for (let i = 0; i < fp.length; i++) {
+        const A = fp[i], B = fp[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et), ns = et / el, nt = -es / el;
+        const nx = fx_ * ns + sxv * nt, ny = fy_ * ns + syv * nt;
+        if (!vis(nx, ny)) continue;
+        const d = sun(nx, ny, 0), side = Math.abs(nt) > 0.9;
+        for (const [z0, z1, col] of bands) {
+          if (col) { Q(A, B, z0, z1, col, d); continue; }
+          Q(A, B, z0, z1, side ? GL : (Math.abs(ns) > 0.9 ? GL : BL), d);
+        }
+        if (side) for (const ds of [-l * 0.62, -0.7, l * 0.62 - 1.4]) {        // dveře
+          const q0 = (ds - A[0]) / es, q1 = (ds + 1.4 - A[0]) / es, P = (q) => [A[0] + es * q, A[1] + et * q];
+          Q(P(Math.min(q0, q1)), P(Math.max(q0, q1)), 0.65, 2.75, DOOR, d);
+        }
+        if (Math.abs(ns) > 0.9) Q(A, B, 0.65, 1.0, DOOR, d);                  // žluté čelo dole
+      }
+      const rz = 3.72, ip = fp.map(([s_, t_]) => [s_ * 0.985, t_ * 0.78]);
+      for (let i = 0; i < fp.length; i++) {
+        const A = fp[i], B = fp[(i + 1) % fp.length], a = ip[i], b = ip[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et);
+        const nx = fx_ * et / el - sxv * es / el, ny = fy_ * et / el - syv * es / el;
+        if (nx + ny >= 0.3) continue;
+        faces.push([[R(A[0], A[1], 3.45), R(B[0], B[1], 3.45), R(b[0], b[1], rz), R(a[0], a[1], rz)], lit(snow || WH, sun(nx * 0.6, ny * 0.6, 0.8))]);
+      }
+      faces.push([ip.map(([s_, t_]) => R(s_, t_, rz)), lit(ROOF, sun(0, 0, 1))]);
+      box(-l * 0.5, -l * 0.15, -0.65, 0.65, rz, rz + 0.3, [150, 154, 160], ROOF);
+      box(l * 0.15, l * 0.5, -0.65, 0.65, rz, rz + 0.3, [150, 154, 160], ROOF);
+    } else if (isBus === 2) {                                                      // tramvaj T3: zkosená čela, zaoblená střecha, okna se sloupky
+      const WH = [236, 238, 232], GR = [34, 138, 90], OR = [234, 150, 38], YE = [238, 196, 40], ROOF = snow || [214, 218, 212];
+      const ch = 1.0, fp = [[-l + ch, -w], [l - ch, -w], [l, -w * 0.5], [l, w * 0.5], [l - ch, w], [-l + ch, w], [-l, w * 0.5], [-l, -w * 0.5]];
+      const bands = [[0.25, 0.45, DARK], [0.45, 1.15, GR], [1.15, 1.27, OR], [1.27, 1.5, WH], [1.5, 2.48, null], [2.48, 2.62, WH], [2.62, 2.88, GR], [2.88, 2.98, WH]];
+      const Q = (A, B, z0, z1, rgb, d) => faces.push([[R(A[0], A[1], z0), R(B[0], B[1], z0), R(B[0], B[1], z1), R(A[0], A[1], z1)], lit(rgb, d)]);
+      for (let i = 0; i < fp.length; i++) {
+        const A = fp[i], B = fp[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et), ns = et / el, nt = -es / el;
+        const nx = fx_ * ns + sxv * nt, ny = fy_ * ns + syv * nt;
+        if (!vis(nx, ny)) continue;
+        const d = sun(nx, ny, 0), isEnd = Math.abs(ns) > 0.3;
+        for (const [z0, z1, col] of bands) {
+          if (col) { Q(A, B, z0, z1, col, d); continue; }
+          if (isEnd) { Q(A, B, z0, z1 + 0.12, GLASS, d); continue; }          // čelní okno
+          Q(A, B, z0, z1, WH, d);
+          const n = Math.max(1, Math.round(el / 2.1)), e = 0.18 / el, P = (q) => [A[0] + es * q, A[1] + et * q];
+          for (let k = 0; k < n; k++) Q(P(k / n + e), P((k + 1) / n - e), z0, z1, GLASS, d);
+        }
+      }
+      const rz = 3.2, ip = fp.map(([s_, t_]) => [s_ * (1 - 0.32 / l), t_ * (1 - 0.32 / w * 1.6)]);
+      for (let i = 0; i < fp.length; i++) {                                 // zaoblená hrana střechy
+        const A = fp[i], B = fp[(i + 1) % fp.length], a = ip[i], b = ip[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et);
+        const nx = fx_ * et / el - sxv * es / el, ny = fy_ * et / el - syv * es / el;
+        if (nx + ny >= 0.3) continue;
+        faces.push([[R(A[0], A[1], 2.98), R(B[0], B[1], 2.98), R(b[0], b[1], rz), R(a[0], a[1], rz)], lit(snow || WH, sun(nx * 0.6, ny * 0.6, 0.8))]);
+      }
+      faces.push([ip.map(([s_, t_]) => R(s_, t_, rz)), lit(ROOF, sun(0, 0, 1))]);
+      box(-0.9, 0.7, -0.45, 0.45, rz, rz + 0.15, [92, 94, 100]);
+      box(-0.5, 0.4, -0.06, 0.06, rz + 0.15, rz + 0.75, YE); box(-0.05, 0.35, -0.06, 0.06, rz + 0.6, rz + 1.05, YE); box(0.15, 0.3, -0.75, 0.75, rz + 1.0, rz + 1.08, YE);
+    } else if (isBus) {                                                     // autobus: bílý, zelený a žlutý pruh, tmavá okna, žluté čelo
+      const WH = [238, 238, 234], GR = [30, 140, 84], YL = [244, 196, 28], GL = [40, 44, 52], DOOR = [54, 58, 66], ROOF = snow || [222, 224, 220];
+      const ch = 0.45, fp = [[-l + ch, -w], [l - ch, -w], [l, -w + ch], [l, w - ch], [l - ch, w], [-l + ch, w], [-l, w - ch], [-l, -w + ch]];
+      const bands = [[0.3, 0.55, GR], [0.55, 0.95, YL], [0.95, 1.15, WH], [1.15, 2.7, null], [2.7, 3.0, WH]];
+      const Q = (A, B, z0, z1, rgb, d) => faces.push([[R(A[0], A[1], z0), R(B[0], B[1], z0), R(B[0], B[1], z1), R(A[0], A[1], z1)], lit(rgb, d)]);
+      for (let i = 0; i < fp.length; i++) {
+        const A = fp[i], B = fp[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et), ns = et / el, nt = -es / el;
+        const nx = fx_ * ns + sxv * nt, ny = fy_ * ns + syv * nt;
+        if (!vis(nx, ny)) continue;
+        const d = sun(nx, ny, 0), front = ns > 0.9, back = ns < -0.9, corner = Math.abs(ns) < 0.9 && Math.abs(nt) < 0.9;
+        for (const [z0, z1, col] of bands) {
+          if (col) { Q(A, B, z0, z1, front && z0 < 1 ? GR : col, d); continue; }
+          if (front) { Q(A, B, 0.95, 2.85, GL, d); continue; }                // čelní sklo
+          if (back) { Q(A, B, z0, z1, WH, d); Q(A, B, 1.6, 2.6, GL, d); continue; }
+          if (corner) { Q(A, B, z0, z1, ns > 0 ? YL : WH, d); continue; }      // žlutý roh čela
+          Q(A, B, z0, z1, GL, d);
+          for (const ds of [-3.6, 0.2, 3.9]) {                               // dveře
+            const q0 = (ds - A[0]) / es, q1 = (ds + 1.2 - A[0]) / es, P = (q) => [A[0] + es * q, A[1] + et * q];
+            if (q0 > 0 && q1 < 1) Q(P(Math.min(q0, q1)), P(Math.max(q0, q1)), 0.35, 2.7, DOOR, d);
+          }
+        }
+      }
+      const rz = 3.0, ip = fp.map(([s_, t_]) => [s_ * 0.97, t_ * 0.86]);
+      for (let i = 0; i < fp.length; i++) {
+        const A = fp[i], B = fp[(i + 1) % fp.length], a = ip[i], b = ip[(i + 1) % fp.length], es = B[0] - A[0], et = B[1] - A[1], el = Math.hypot(es, et);
+        const ns = et / el, nx = fx_ * ns - sxv * es / el, ny = fy_ * ns - syv * es / el;
+        if (nx + ny >= 0.3) continue;
+        faces.push([[R(A[0], A[1], 2.95), R(B[0], B[1], 2.95), R(b[0], b[1], rz + 0.08), R(a[0], a[1], rz + 0.08)], lit(ns > 0.5 ? YL : (snow || WH), sun(nx * 0.6, ny * 0.6, 0.8))]);
+      }
+      faces.push([ip.map(([s_, t_]) => R(s_, t_, rz + 0.08)), lit(ROOF, sun(0, 0, 1))]);
+      box(-l * 0.45, l * 0.55, -0.75, 0.75, rz + 0.08, rz + 0.38, WH, ROOF);   // baterie na střeše
+      box(l - 1.1, l - 0.35, -0.95, 0.95, rz, rz + 0.18, YL);                  // žlutá čepice čela
+    } else {
+      box(-l, l, -w * 0.98, w * 0.98, 0.3, 1.0, c);
+      box(-l * 0.57, l * 0.48, -w * 0.89, w * 0.89, 1.0, 1.45, GLASS);
+      box(-l * 0.55, l * 0.45, -w * 0.87, w * 0.87, 1.45, 1.52, c, snow);
+    }
+    wheels(near);
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [pts] of faces) for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    x0 = Math.floor(x0) - 1; y0 = Math.floor(y0) - 1;
+    const cw = Math.ceil(x1) - x0 + 2, chh = Math.ceil(y1) - y0 + 2;
+    const cv = document.createElement('canvas'); cv.width = cw; cv.height = chh;
+    const g = cv.getContext('2d');
+    for (const [pts, fill] of faces) { g.fillStyle = fill; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x - x0, y - y0) : g.moveTo(x - x0, y - y0))); g.closePath(); g.fill(); }
+    // jako render: bez poloprůhledných okrajů a s tmavým obrysem 1 px kolem siluety
+    const im = g.getImageData(0, 0, cw, chh), d = im.data, solid = new Uint8Array(cw * chh);
+    for (let i = 0; i < cw * chh; i++) { solid[i] = d[i * 4 + 3] >= 110 ? 1 : 0; d[i * 4 + 3] = solid[i] ? 255 : 0; }
+    for (let y = 0; y < chh; y++) for (let x = 0; x < cw; x++) {
+      const i = y * cw + x; if (solid[i]) continue;
+      if ((x > 0 && solid[i - 1]) || (x < cw - 1 && solid[i + 1]) || (y > 0 && solid[i - cw]) || (y < chh - 1 && solid[i + cw])) d.set([27, 28, 34, 255], i * 4);
+    }
+    g.putImageData(im, 0, 0);
+    const spr = { c: cv, x0, y0 }; VEH.set(key, spr); return spr;
+  }
+  // stromy u cest (overlay čtverce): koruny, za kterými se schovají vozidla a lyžaři. Mřížka po 16 m ve světě.
+  const TG = new Map(), tgk = (x, y) => Math.floor(x / 16) + ',' + Math.floor(y / 16);
+  onChunk.push((k, d) => { for (const t of d.trees || []) { const q = tgk(t[0], t[1]); if (!TG.has(q)) TG.set(q, []); TG.get(q).push(t); } });
+  // obrysy korun před bodem (x, y, z) v obrazových pixelech: elipsa listnáče, trojúhelník jehličnanu (jako v renderu)
+  function treeShapes(x, y, z, bb) {
+    const dv = depth(x, y, z), out = [], cx = Math.floor(x / 16), cy = Math.floor(y / 16);
+    for (let i = cx - 2; i <= cx + 2; i++) for (let j = cy - 2; j <= cy + 2; j++) for (const t of TG.get(i + ',' + j) || []) {
+      const [tx, ty, tz, h, con] = t;
+      if (depth(tx, ty, tz) >= dv - 0.3) continue;                               // strom je za vozidlem
+      if (con) {
+        const a = toImg(tx, ty, tz + h), b = toImg(tx, ty, tz + h * 0.12), r = h * 0.2 / cam.mpp;
+        if (a[0] + r < bb[0] || a[0] - r > bb[2] || a[1] > bb[3] || b[1] < bb[1]) continue;
+        out.push([0, a, b, r]);
+      } else {
+        const ch = h * 0.4, c = toImg(tx, ty, tz + h - ch), rx = h * 0.31 / cam.mpp, ry = Math.abs(toImg(tx, ty, tz + h)[1] - c[1]) + rx * 0.35;
+        if (c[0] + rx < bb[0] || c[0] - rx > bb[2] || c[1] + ry < bb[1] || c[1] - ry > bb[3]) continue;
+        out.push([1, c, rx, ry]);
+      }
+    }
+    return out;
+  }
+  const occC = document.createElement('canvas'), occX = occC.getContext('2d');
+  // obrázek vozidla na mapu, s vyříznutými korunami stromů, které stojí před ním
+  function drawBehindTrees(img, ix, iy, iw, ih, x, y, z, sx, ox, oy) {
+    const X0 = Math.round(ox + ix * sx), Y0 = Math.round(oy + iy * sx), w = Math.round(iw * sx), h = Math.round(ih * sx);
+    const sh = treeShapes(x, y, z, [ix, iy, ix + iw, iy + ih]);
+    if (!sh.length) { ctx.drawImage(img, X0, Y0, w, h); return; }
+    if (occC.width < w || occC.height < h) { occC.width = Math.max(occC.width, w); occC.height = Math.max(occC.height, h); }
+    occX.clearRect(0, 0, w, h); occX.imageSmoothingEnabled = false; occX.globalCompositeOperation = 'source-over';
+    occX.drawImage(img, 0, 0, w, h);
+    occX.globalCompositeOperation = 'destination-out'; occX.fillStyle = '#000'; occX.beginPath();
+    const P = (p) => [ox + p[0] * sx - X0, oy + p[1] * sx - Y0];
+    for (const q of sh) {
+      if (q[0] === 0) { const [ax, ay] = P(q[1]), [bx, by] = P(q[2]), r = q[3] * sx; occX.moveTo(ax, ay); occX.lineTo(bx + r, by); occX.lineTo(bx - r, by); occX.closePath(); }
+      else { const [cx, cy] = P(q[1]); occX.moveTo(cx + q[2] * sx, cy); occX.ellipse(cx, cy, q[2] * sx, q[3] * sx, 0, 0, Math.PI * 2); }
+    }
+    occX.fill(); occX.globalCompositeOperation = 'source-over';
+    ctx.drawImage(occC, 0, 0, w, h, X0, Y0, w, h);
+  }
+  function drawVehicle(o, len, wid, col, sx, ox, oy, night, isBus) {
+    const L = Math.hypot(o.dx, o.dy) || 1, fx_ = o.dx / L * (o.dirSign || 1), fy_ = o.dy / L * (o.dirSign || 1);
+    const sxv = -fy_, syv = fx_;
+    const lane = o.lane ?? 1.6, cxw = o.x - sxv * lane, cyw = o.y - syv * lane;
+    const h0 = gz(cxw, cyw);
+    const base = toImg(cxw, cyw, h0);
+    if (occluded(base[0], base[1], depth(cxw, cyw, h0))) return false;
+    const k = ((Math.round(Math.atan2(fy_, fx_) / (Math.PI * 2) * NDIR) % NDIR) + NDIR) % NDIR;
+    const spr = vehicleSprite(col, k, isBus, len, wid, state.season === 'winter');
+    drawBehindTrees(spr.c, base[0] + spr.x0, base[1] + spr.y0, spr.c.width, spr.c.height, cxw, cyw, h0, sx, ox, oy);
+    if (night > 0.3) {
+      const P = (s, t, h) => { const p = toImg(cxw + fx_ * s + sxv * t, cyw + fy_ * s + syv * t, h0 + h); return [ox + p[0] * sx, oy + p[1] * sx]; };
+      const poly = (pts, c) => { ctx.fillStyle = c; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); };
+      const l = len / 2, w = wid / 2, a = Math.min(1, (night - 0.3) / 0.4);
+      ctx.globalAlpha = a * 0.35; poly([P(l, -w, 0.6), P(l + 14, -w - 4, 0.1), P(l + 14, w + 4, 0.1), P(l, w, 0.6)], '#ffe7a3');
+      ctx.globalAlpha = a; const q = Math.max(1, sx * 3);
+      for (const t of [-w * 0.7, w * 0.7]) { const [x, y] = P(l, t, 0.7); ctx.fillStyle = '#fff4c8'; ctx.fillRect(x - q / 2, y - q / 2, q, q); const [x2, y2] = P(-l, t, 0.7); ctx.fillStyle = '#ff3b2f'; ctx.fillRect(x2 - q / 2, y2 - q / 2, q, q); }
+      ctx.globalAlpha = 1;
+    }
+    return true;
+  }
+  // vánoční strom na náměstí Míru (v zimě, večer svítí)
+  const xmas = (() => {
+    const c = document.createElement('canvas'); c.width = 30; c.height = 48; const g = c.getContext('2d');
+    g.fillStyle = '#4a3020'; g.fillRect(13, 41, 4, 6);
+    const lights = [];
+    for (let i = 0; i < 6; i++) {
+      const top = 6 + i * 6, hw = 4 + i * 2.2;
+      for (let y = 0; y < 9; y++) { const w_ = Math.round(hw * (y + 1) / 9); g.fillStyle = y < 2 ? '#2f6a42' : '#1f4f30'; g.fillRect(15 - w_, top + y, w_ * 2, 1); g.fillStyle = '#e8eef5'; if (y === 0) g.fillRect(15 - w_, top, w_ * 2, 1); }
+      for (let k = 0; k < 3 + i; k++) lights.push([15 - hw + rnd(i * 10 + k) * hw * 2, top + 4 + rnd(i * 7 + k) * 4]);
+    }
+    g.fillStyle = '#f6d34a'; g.fillRect(13, 1, 4, 4); g.fillRect(14, 0, 2, 6); g.fillRect(12, 2, 6, 2);
+    return { c, lights };
+  })();
+  // vodní třpytky: body na potocích a uvnitř rybníků
+  const sparkles = [];
+  onChunk.push((wk, d) => {
+  const WT = d.water;
+  {
+  for (const l of WT.streams) for (let i = 1; i < l.length; i++) { const [x0, y0] = l[i - 1], [x1, y1] = l[i]; const n = Math.floor(Math.hypot(x1 - x0, y1 - y0) / 14); for (let k = 0; k < n; k++) sparkles.push([x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, rnd(sparkles.length), wk]); }
+  for (const p of WT.ponds) {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    const n = Math.min(400, Math.floor((x1 - x0) * (y1 - y0) / 140));
+    for (let k = 0; k < n; k++) { const x = x0 + rnd(k * 3 + x0) * (x1 - x0), y = y0 + rnd(k * 5 + y0) * (y1 - y0); if (inPoly(x, y, p)) sparkles.push([x, y, rnd(k + x), wk]); }
+  }
+  }
+  });
+  // mraky
+  // mraky: 30 náhodně nad celou mapou (souřadnice obrázku čtverce 0,0, mapa sahá i do záporných)
+  const MX0 = Math.min(...LAYERS.map((l) => l.x)) * W, MX1 = Math.max(...LAYERS.map((l) => l.x + l.w)) * W;
+  const MY0 = Math.min(...LAYERS.map((l) => l.y)) * W, MY1 = Math.max(...LAYERS.map((l) => l.y + l.w * 0.56)) * W;
+  const clouds = Array.from({ length: 30 }, (_, i) => {
+    const blocks = []; const n = 5 + Math.floor(rnd(i + 40) * 5);
+    for (let k = 0; k < n; k++) { const cx = (rnd(i * 13 + k) - 0.5) * 40, cy = (rnd(i * 17 + k) - 0.5) * 12, rr = 5 + rnd(i * 7 + k) * 7;
+      for (let y = -rr; y <= rr; y++) for (let x = -rr * 1.6; x <= rr * 1.6; x++) if ((x / 1.6) ** 2 + y ** 2 <= rr * rr) blocks.push([Math.round(cx + x), Math.round(cy + y)]); }
+    const key = new Set(blocks.map((b) => b.join(','))); const uniq = [...key].map((s) => s.split(',').map(Number));
+    return { x: MX0 - 1500 + rnd(i + 1) * (MX1 - MX0 + 3000), y: MY0 + 600 + rnd(i + 2) * (MY1 - MY0 - 1200), blocks: uniq, bottom: new Set(uniq.filter(([x, y]) => !key.has(x + ',' + (y + 1))).map((b) => b.join(','))) };
+  });
+  const BS = 22;
+  for (const c of clouds) { c.minx = Math.min(...c.blocks.map((b) => b[0])); c.miny = Math.min(...c.blocks.map((b) => b[1])); c.bmp = {}; }
+  function cloudBitmap(c, key, dark) {
+    if (c.bmp[key]) return c.bmp[key];
+    const w = Math.max(...c.blocks.map((b) => b[0])) - c.minx + 1, h = Math.max(...c.blocks.map((b) => b[1])) - c.miny + 1;
+    const mk = () => { const k = document.createElement('canvas'); k.width = w; k.height = h; return k; };
+    const sh = mk(), bo = mk(), a = sh.getContext('2d'), b = bo.getContext('2d');
+    a.fillStyle = 'rgba(10,16,40,0.10)';
+    for (const [x, y] of c.blocks) {
+      a.fillRect(x - c.minx, y - c.miny, 1, 1);
+      const bottom = c.bottom.has(x + ',' + y);
+      b.fillStyle = dark === 2 ? (bottom ? 'rgba(90,96,118,.6)' : 'rgba(120,128,150,.6)') : dark === 1 ? (bottom ? 'rgba(120,124,136,.62)' : 'rgba(168,172,184,.62)') : (bottom ? 'rgba(214,222,236,.62)' : 'rgba(250,251,255,.62)');
+      b.fillRect(x - c.minx, y - c.miny, 1, 1);
+    }
+    return (c.bmp[key] = [sh, bo]);
+  }
+  // počasí: částice v souřadnicích obrazovky
+  const drops = Array.from({ length: 420 }, (_, i) => ({ x: rnd(i * 2.1), y: rnd(i * 3.7), v: 0.6 + rnd(i * 5.3) * 0.5, s: rnd(i * 7.1) }));
+  const fogTex = (() => { const c = document.createElement('canvas'); c.width = 48; c.height = 28; const g = c.getContext('2d');
+    for (let y = 0; y < 28; y++) for (let x = 0; x < 48; x++) { const v = (Math.sin(x * 0.35) + Math.sin(y * 0.6 + x * 0.12) + Math.sin((x + y) * 0.21)) / 3; g.fillStyle = `rgba(226,232,240,${(0.18 + 0.2 * Math.max(0, v)).toFixed(3)})`; g.fillRect(x, y, 1, 1); }
+    return c; })();
+
+  let last = performance.now(), skip = false;
+  // úsporný režim: když prohlížeč pár sekund nestíhá (víc než čtvrtina snímků přes 34 ms), přepne na hrubší dlaždice,
+  // méně souběžných stahování a animace na 30 fps. Platí do zavření karty.
+  let eco = false, perfN = 0, perfSlow = 0, perfW = 0, perfT0 = performance.now() + 8000;   // prvních 8 s se načítá, neměřit
+  try { eco = sessionStorage.getItem('izo-eco') === '1'; } catch {}
+  function setEco() {
+    eco = true;
+    try { sessionStorage.setItem('izo-eco', '1'); } catch {}
+    viewer.minPixelRatio = Math.max(viewer.minPixelRatio || 0, 1.2);
+    for (let i = 0; i < viewer.world.getItemCount(); i++) viewer.world.getItemAt(i).minPixelRatio = viewer.minPixelRatio;
+    if (viewer.imageLoader) viewer.imageLoader.jobLimit = 4;
+    viewer.forceRedraw();
+  }
+  if (eco) setEco();
+  function perf(ms) {
+    if (eco || document.hidden || ms > 250 || performance.now() < perfT0) return;   // dlouhá pauza = skrytá karta, ne pomalost
+    const now = performance.now(); if (!perfN) perfW = now;
+    perfN++; if (ms > 34) perfSlow++;
+    if (now - perfW > 3000) { if (perfN > 20 && perfSlow / perfN > 0.25) setEco(); perfN = perfSlow = 0; }   // okno 3 s
+  }
+  function frame(now) {
+    perf(now - last);
+    if (eco && (skip = !skip)) { requestAnimationFrame(frame); return; }      // úsporně: každý druhý snímek
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = fx.clientWidth, ch = fx.clientHeight;
+    if (fx.width !== Math.round(cw * dpr) || fx.height !== Math.round(ch * dpr)) { fx.width = Math.round(cw * dpr); fx.height = Math.round(ch * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cw, ch); ctx.imageSmoothingEnabled = false;
+    const vp = viewer.viewport;
+    const p0 = vp.pixelFromPoint(new OpenSeadragon.Point(0, 0), true), p1 = vp.pixelFromPoint(new OpenSeadragon.Point(1, 0), true);
+    const sx = (p1.x - p0.x) / W, ox = p0.x, oy = p0.y;
+    const vis = (ix, iy, m = 40) => { const x = ox + ix * sx, y = oy + iy * sx; return x > -m && y > -m && x < cw + m && y < ch + m; };
+    const night = state.night, t = now / 1000, snowy = state.season === 'winter';
+    $('map').classList.toggle('far', sx < 0.3);
+
+    // třpyt vody (ve dne)
+    if (sx > 0.25 && night < 0.6 && !snowy) {
+      const q = Math.max(1, Math.round(sx * 1.5));
+      for (const [x, y, ph, wk] of sparkles) {
+        if (!shown(wk)) continue;
+        const a = Math.sin(t * 2.2 + ph * 40);
+        if (a < 0.7 || !vis(x, y)) continue;
+        ctx.fillStyle = `rgba(235,248,255,${((a - 0.7) * 2.6).toFixed(2)})`;
+        ctx.fillRect(Math.round(ox + x * sx), Math.round(oy + y * sx), q, q);
+      }
+    }
+    // vybraná / zvýrazněná budova
+    for (const [b, c, lw] of [[state.hover, 'rgba(242,198,109,.9)', 1.5], [state.sel, '#f2c66d', 2.5]]) {
+      if (!b) continue;
+      ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath();
+      b.hull.forEach(([x, y], i) => (i ? ctx.lineTo(ox + x * sx, oy + y * sx) : ctx.moveTo(ox + x * sx, oy + y * sx)));
+      ctx.closePath(); ctx.stroke();
+    }
+    // doprava
+    if ($('l-traffic').checked) {
+      for (const c of cars) stepCar(c, dt);
+      if (sx > 0.12) for (const c of cars) {
+        if (!shown(roads[c.r].k)) continue;
+        const o = along(roads[c.r], c.s); o.dirSign = c.dir; o.lane = roads[c.r].o ? 0 : 1.6;
+        if (vis(o.ix, o.iy)) drawVehicle(o, 4.2, 1.76, c.col, sx, ox, oy, night, false);
+      }
+      if (MHD.on) {
+        const ns = Math.floor(now / 1000);
+        if (ns !== MHD.t) { MHD.t = ns; MHD.act = mhdActive(); if (MHD.follow !== null) mhdFollowText(); }
+        MHD.drawn = [];
+        if (MHD.follow !== null) {
+          const a = MHD.act.find((q) => q[0] === MHD.follow);
+          if (a) { const o = mhdPos(MHD.trips[a[0]], a[1] + (now / 1000 - ns)); viewer.viewport.panTo(new OpenSeadragon.Point(o.ix / W, o.iy / W), true); }
+        }
+        if (sx > 0.12) for (const [i, el] of MHD.act) {
+          const trip = MHD.trips[i], o = mhdPos(trip, el + (now / 1000 - ns)), [line, typ] = MHD.routes[trip[0]];
+          if (!vis(o.ix, o.iy, 120) || !cam.grounds.some((q) => Math.abs(o.x - q.cx) <= cam.half && Math.abs(o.y - q.cy) <= cam.half)) continue;   // mimo čtverce mapy
+          if (typ === 2) o.lane = 0;
+          const shown_ = typ === 2 ? drawVehicle(o, 25, 2.9, '#2658a4', sx, ox, oy, night, 3) : typ === 0 ? drawVehicle(o, 15, 2.5, 't3', sx, ox, oy, night, 2) : drawVehicle(o, 12, 2.5, '#e9e6dc', sx, ox, oy, night, true);
+          if (shown_) MHD.drawn.push([Math.round(ox + o.ix * sx), Math.round(oy + o.iy * sx) - Math.round(8 * sx), i]);
+          if (shown_ && (sx > 0.55 || i === MHD.follow)) {     // číslo linky nad vozidlem
+            const h = gz(o.x, o.y), [tx, ty] = toImg(o.x, o.y, h + 6), X_ = Math.round(ox + tx * sx), Y_ = Math.round(oy + ty * sx);
+            ctx.font = '700 13px "Atkinson Hyperlegible", system-ui, sans-serif'; const tw = Math.ceil(ctx.measureText(line).width) + 10;
+            ctx.fillStyle = '#16191f'; ctx.fillRect(X_ - tw / 2 - 1, Y_ - 10, tw + 2, 19);
+            ctx.fillStyle = typ === 0 ? '#c4352b' : '#1f6fb2'; ctx.fillRect(X_ - tw / 2, Y_ - 9, tw, 17);
+            if (i === MHD.follow) { ctx.strokeStyle = '#f2c66d'; ctx.lineWidth = 2; ctx.strokeRect(X_ - tw / 2 - 2, Y_ - 11, tw + 4, 21); }
+            ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(line, X_, Y_); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+          }
+        }
+      }
+      if (bus && !MHD.on) {
+        stepShuttle(bus, dt, 4, 6);
+        const o = along(bus.r, bus.s); o.dirSign = bus.dir;
+        if (sx > 0.12 && vis(o.ix, o.iy, 80)) drawVehicle(o, 12, 2.5, '#e9e6dc', sx, ox, oy, night, true);
+      }
+      for (const tr of MHD.on ? [] : trams) {
+        stepShuttle(tr, dt, 5, 12);
+        if (sx <= 0.12) continue;
+        const o = along(tr.r, tr.s); o.dirSign = tr.dir;
+        if (vis(o.ix, o.iy, 120)) drawVehicle(o, 15, 2.5, 't3', sx, ox, oy, night, 2);
+      }
+    }
+    // lyžaři (jen v zimě)
+    if (snowy && skiers.length) {
+      for (const q of skiers) { q.s += q.v * dt; if (q.s > q.r.L) q.s = rnd(q.s) * 20; }
+      if (sx > 0.2) for (const q of skiers) {
+        if (!shown(q.r.k)) continue;
+        const a = q.r.w[0]; if (!vis(...toImg(a[0], a[1], a[2]), 4000)) continue;
+        drawSkier(q, sx, ox, oy);
+      }
+    }
+    // vánoční strom
+    if (snowy && OV.xmas && vis(OV.xmas[0], OV.xmas[1], 100) && sx > 0.15) {
+      const k = Math.max(1, Math.round(sx * 1.2)), X0 = Math.round(ox + (OV.xmas[0] + 30) * sx - 15 * k), Y0 = Math.round(oy + (OV.xmas[1] - 4) * sx - 48 * k);
+      ctx.drawImage(xmas.c, X0, Y0, 30 * k, 48 * k);
+      const on = night > 0.3 ? 1 : 0.55;
+      xmas.lights.forEach(([lx, ly], i) => {
+        const ph = (Math.floor(t * 2) + i) % 4;
+        ctx.fillStyle = ['#ff4a3a', '#ffd23a', '#4ab0ff', '#ffffff'][ph];
+        ctx.globalAlpha = on; ctx.fillRect(X0 + Math.round(lx * k), Y0 + Math.round(ly * k), k, k); ctx.globalAlpha = 1;
+      });
+    }
+    // kouř z komínů
+    if ($('l-smoke').checked && sx > 0.3) {
+      // kouř: v létě vůbec, na jaře jen ojediněle, na podzim a v zimě víc (ale ne z každého domu)
+      const prob = { spring: 0.04, summer: 0, autumn: 0.14, winter: 0.24 }[state.season] * (1 + night * 0.4);
+      const q = Math.max(1, Math.round(sx * 2));
+      const wind = realWind ? realWind.strength : state.weather === 'rain' ? 1.8 : 1;
+      const driftX = realWind ? realWind.dx : 1, driftY = realWind ? realWind.dy : 0;
+      for (const [cx, cy, cid] of chimneys) {
+        const ck = cid.split(':')[0], id = sid(cid);
+        if (!shown(ck)) continue;
+        if (rnd(id) > prob || !vis(cx, cy, 200)) continue;
+        for (let k = 0; k < 9; k++) {
+          const a = (t * 0.18 + k / 9 + rnd(id + 0.5)) % 1;
+          const drift = a * a * 40 * wind;
+          const px = cx + drift * driftX + Math.sin(a * 5 + id) * 2.5, py = cy + drift * driftY - a * 75 / Math.max(1, wind) - 3;
+          const size = Math.max(q, Math.round((3 + a * 8) * sx));
+          const g = Math.round(night > 0.5 ? 120 : 236 - a * 26);
+          ctx.fillStyle = `rgba(${g},${g},${g + 6},${(0.6 * Math.pow(1 - a, 1.3)).toFixed(3)})`;
+          ctx.fillRect(Math.round(ox + px * sx - size / 2), Math.round(oy + py * sx - size / 2), size, size);
+        }
+      }
+    }
+    // mraky (jen při oddálení); při dešti a sněžení tmavší a víc
+    {
+      const fade = Math.max(0, Math.min(1, (0.45 - sx) / 0.25));
+      const dark = night > 0.5 ? 2 : (state.weather === 'rain' || state.weather === 'snow') ? 1 : 0;
+      clouds.forEach((c, i) => {
+        c.x += dt * (state.weather === 'rain' ? 30 : 14); if (c.x > MX1 + 1800) c.x = MX0 - 1800;
+        if (fade <= 0 || (state.weather === 'clear' && i > 20)) return;
+        const [shadowC, bodyC] = cloudBitmap(c, dark, dark);
+        ctx.globalAlpha = fade;
+        ctx.drawImage(shadowC, Math.round(ox + (c.x + c.minx * BS) * sx), Math.round(oy + (c.y + c.miny * BS) * sx), Math.round(shadowC.width * BS * sx), Math.round(shadowC.height * BS * sx));
+        ctx.drawImage(bodyC, Math.round(ox + (c.x - 260 + c.minx * BS) * sx), Math.round(oy + (c.y - 620 + c.miny * BS) * sx), Math.round(bodyC.width * BS * sx), Math.round(bodyC.height * BS * sx));
+        ctx.globalAlpha = 1;
+      });
+    }
+    // názvy čtvrtí: jako mraky – vidět při oddálení, s přiblížením plynule mizí
+    {
+      const fadeD = Math.max(0, Math.min(1, (0.22 - sx) / 0.14));
+      if (fadeD > 0 && $('l-labels').checked) {
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const boxes = [];
+        for (const d of DISTRICTS) {                      // od největší čtvrti; překrývající se menší popisek vynechat
+          const x = ox + d.xy[0] * sx, y = oy + d.xy[1] * sx;
+          if (x < -200 || y < -60 || x > cw + 200 || y > ch + 60) continue;
+          const big = d.a > 3 ? 1 : 0.82;
+          ctx.font = `500 ${Math.round(15 * big)}px ${DISPLAY_FONT}`;
+          const tw = ctx.measureText(d.name.toUpperCase()).width / 2 + 6, th = 11;
+          if (boxes.some(([bx, by, bw]) => Math.abs(bx - x) < bw + tw && Math.abs(by - y) < th * 2)) continue;
+          boxes.push([x, y, tw]);
+          ctx.globalAlpha = fadeD * 0.9;
+          ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,26,40,0.75)'; ctx.strokeText(d.name.toUpperCase(), x, y);
+          ctx.fillStyle = '#f3efe2'; ctx.fillText(d.name.toUpperCase(), x, y);
+        }
+        ctx.restore(); ctx.globalAlpha = 1;
+      }
+    }
+    // počasí
+    if (state.weather === 'rain') {
+      ctx.fillStyle = 'rgba(20,28,44,0.16)'; ctx.fillRect(0, 0, cw, ch);
+      ctx.fillStyle = night > 0.5 ? 'rgba(150,170,200,0.45)' : 'rgba(210,225,245,0.55)';
+      for (const d of drops) {
+        d.y += d.v * dt * 1.6; if (d.y > 1) { d.y -= 1; d.x = Math.random(); }
+        const x = Math.round(d.x * cw + d.y * 60), y = Math.round(d.y * ch);
+        for (let k = 0; k < 4; k++) ctx.fillRect(x - k, y - k * 3, 1, 3);
+      }
+    } else if (state.weather === 'snow') {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (const d of drops) {
+        d.y += d.v * dt * 0.12; if (d.y > 1) { d.y -= 1; d.x = Math.random(); }
+        const x = Math.round(((d.x + Math.sin(t * 0.8 + d.s * 9) * 0.01) % 1) * cw), y = Math.round(d.y * ch), q = d.s > 0.7 ? 3 : 2;
+        ctx.fillRect(x, y, q, q);
+      }
+    } else if (state.weather === 'fog') {
+      const off = (t * 6) % (cw / 2);
+      ctx.globalAlpha = night > 0.5 ? 0.5 : 0.85;
+      ctx.drawImage(fogTex, -off, 0, cw * 1.5, ch); ctx.drawImage(fogTex, cw * 1.5 - off, 0, cw * 1.5, ch);
+      ctx.globalAlpha = 1;
+    }
+    drawMini();
+    const m = cam.mpp / sx;
+    $('scale').textContent = m < 1 ? `1 px = ${Math.round(m * 100)} cm` : `1 px = ${Math.round(m)} m`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
