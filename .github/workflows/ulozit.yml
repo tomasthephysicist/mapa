@@ -1,0 +1,35 @@
+name: Ulozit mapu
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  ulozit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          run-id: 42203079760
+          github-token: ${{ github.token }}
+          path: balik
+
+      - name: Ulozeni do vetve mapa-site
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          mkdir hotova-mapa
+          tar -xf balik/artifact.tar -C hotova-mapa
+          du -sh hotova-mapa
+          cd hotova-mapa
+          git init -b mapa-site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Hotova mapa z behu 42203079760"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin mapa-site
