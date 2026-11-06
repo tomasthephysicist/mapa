@@ -1,0 +1,89 @@
+name: Pridat hrad
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  stavba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: mapa-site
+          path: site
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Priprava
+        run: |
+          rm -rf site/.git
+          sh ./setup.sh
+          npx playwright install-deps chromium
+          .venv/bin/python novy_mesto.py "Záchlumí" --dotaz "Záchlumí, okres Ústí nad Orlicí, Česko"
+          .venv/bin/python hrad.py
+
+      - name: Data
+        run: |
+          . .venv/bin/activate
+          python fetch_data.py --vse
+          python dmp_fetch.py
+          python dmp_vysky.py
+          python nastroje/les.py
+          python nastroje/zabaged.py
+          python nastroje/pole.py
+
+      - name: Scena a render ctverce s hradem
+        run: |
+          . .venv/bin/activate
+          python prep.py data_c-1_0 -1,0
+          sh ./render_chunk.sh -1,0
+
+      - name: Dlazdice a web
+        run: |
+          . .venv/bin/activate
+          rm -rf site/tiles/c-1_0
+          python dzi.py --chunk -1,0
+          python hrad.py --vystup
+          python vlak.py
+          du -sh site
+
+      - name: Trvale ulozeni
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd site
+          git init -q -b mapa-site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Mapa s hradem Litice"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin mapa-site
+          rm -rf .git
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  zverejneni:
+    needs: stavba
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.nasazeni.outputs.page_url }}
+    steps:
+      - id: nasazeni
+        uses: actions/deploy-pages@v4
