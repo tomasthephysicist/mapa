@@ -1,0 +1,47 @@
+name: Pridat vlak
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  stavba:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: mapa-site
+          path: site
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Priprava
+        run: |
+          rm -rf site/.git
+          pip install -q shapely pyproj numpy pillow pyarrow pandas
+          python novy_mesto.py "Záchlumí" --dotaz "Záchlumí, okres Ústí nad Orlicí, Česko"
+
+      - name: Vlak a jizdni rad
+        run: python vlak.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  zverejneni:
+    needs: stavba
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.nasazeni.outputs.page_url }}
+    steps:
+      - id: nasazeni
+        uses: actions/deploy-pages@v4
