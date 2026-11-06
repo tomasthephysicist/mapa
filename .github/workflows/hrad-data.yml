@@ -1,0 +1,57 @@
+name: Hrad data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  data:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Data o hradu
+        run: |
+          pip install -q shapely pyproj numpy pillow pyarrow pandas
+          python novy_mesto.py "Záchlumí" --dotaz "Záchlumí, okres Ústí nad Orlicí, Česko"
+          cat > d.py <<'PY'
+          import base64, io, json, time, urllib.parse, urllib.request
+          import pyarrow.dataset as ds, pyarrow.fs as fs, shapely, geo
+          from PIL import Image
+          def over(q):
+              for i in range(5):
+                  try:
+                      r = urllib.request.Request('https://overpass-api.de/api/interpreter', urllib.parse.urlencode({'data': q}).encode(), {'User-Agent': 'mapa-zachlumi'})
+                      return json.load(urllib.request.urlopen(r, timeout=120))['elements']
+                  except Exception as e:
+                      print('overpass', e); time.sleep(20)
+              return []
+          X0, X1, Y0, Y1 = geo.bbox_lonlat(400)
+          e = over(f'[out:json];nwr["historic"~"castle|ruins"]["name"~"Litice"]({Y0},{X0},{Y1},{X1});out center tags;')
+          print('HRAD', json.dumps(e, ensure_ascii=False))
+          c = e[0].get('center') or e[0]
+          lat, lon = c['lat'], c.get('lon')
+          print('STRED', lat, lon, 'local', geo.to_local(lon, lat), 'mesto', geo.LON0, geo.LAT0, 'ctverce', sorted(geo.CHUNKS))
+          e2 = over(f'[out:json];(way(around:170,{lat},{lon})["building"];way(around:170,{lat},{lon})["barrier"];way(around:170,{lat},{lon})["man_made"];way(around:170,{lat},{lon})["historic"];);out tags geom;')
+          for w in e2:
+              g = [[round(float(v), 1) for v in geo.to_local(p['lon'], p['lat'])] for p in w.get('geometry', [])]
+              print('OSM', w['id'], json.dumps(w.get('tags'), ensure_ascii=False), g)
+          k = 0.0026
+          d = ds.dataset('overturemaps-us-west-2/release/2026-10-21.0/theme=buildings/type=building/', filesystem=fs.S3FileSystem(anonymous=True, region='us-west-2'), format='parquet')
+          f = (ds.field('bbox', 'xmin') < lon + k) & (ds.field('bbox', 'xmax') > lon - k) & (ds.field('bbox', 'ymin') < lat + k) & (ds.field('bbox', 'ymax') > lat - k)
+          for r in d.to_table(filter=f, columns=['id', 'height', 'geometry', 'names']).to_pylist():
+              g = shapely.from_wkb(r['geometry']); xs = [[round(float(v), 1) for v in geo.to_local(a, b)] for a, b in g.exterior.coords]
+              print('BUD', r['id'], r['height'], r['names'], xs)
+          x, y = geo.to_local(lon, lat); R = 130
+          (a, b), (c_, d_) = geo.to_lonlat([x - R, x + R], [y - R, y + R])
+          q = urllib.parse.urlencode({'SERVICE': 'WMS', 'VERSION': '1.3.0', 'REQUEST': 'GetMap', 'LAYERS': '0', 'STYLES': '', 'CRS': 'EPSG:4326', 'BBOX': f'{float(c_)},{float(a)},{float(d_)},{float(b)}', 'WIDTH': 700, 'HEIGHT': 700, 'FORMAT': 'image/jpeg'})
+          img = urllib.request.urlopen('https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?' + q, timeout=120).read()
+          im = Image.open(io.BytesIO(img)).convert('RGB'); b_ = io.BytesIO(); im.save(b_, 'JPEG', quality=75)
+          s = base64.b64encode(b_.getvalue()).decode()
+          print('ORTO', im.size, 'x', x - R, x + R, 'y', y - R, y + R, 'delka', len(s))
+          for i in range(0, len(s), 4000): print('B64', s[i:i + 4000])
+          PY
+          python d.py
