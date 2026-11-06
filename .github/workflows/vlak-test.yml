@@ -42,11 +42,11 @@ jobs:
               traffic: document.getElementById('l-traffic').checked, sluzeb: Object.keys(z.MHD.services).length, vlaku: z.MHD.trips.length, drawn: z.MHD.drawn,
               act: a.map(q => { const o = z.mhdPos(z.MHD.trips[q[0]], q[1]); return {i: q[0], el: q[1], x: o.x, y: o.y, ix: o.ix, iy: o.iy}; }) }; });
             console.log('INFO', JSON.stringify(info));
-            const o = info.act[0];
-            if (o) for (const zoom of [0.5, 1.5]) {
-              await p.evaluate(([ix, iy, zoom]) => { const v = window.__v, W = v.world.getItemAt(0).getContentSize().x; v.viewport.zoomTo(v.viewport.imageToViewportZoom(zoom), null, true); v.viewport.panTo(new OpenSeadragon.Point(ix / W, iy / W), true); }, [o.ix, o.iy, zoom]);
-              await p.waitForTimeout(9000);
-              const d = await p.evaluate(() => JSON.stringify({drawn: window.__izo.MHD.drawn, sx: window.__v.viewport.viewportToImageZoom(window.__v.viewport.getZoom(true))}));
+            const pan = (zoom) => p.evaluate((zoom) => { const v = window.__v, W = 17596, z = window.__izo, a = z.mhdActive()[0], o = z.mhdPos(z.MHD.trips[a[0]], a[1]); v.viewport.zoomTo(zoom * W / 1000, null, true); v.viewport.panTo(new OpenSeadragon.Point(o.ix / W, o.iy / W), true); return [o.x, o.y]; }, zoom);
+            for (const zoom of [0.5, 1.5]) {
+              for (let i = 0; i < 6; i++) { await pan(zoom); await p.waitForTimeout(1500); }
+              await pan(zoom); await p.waitForTimeout(700);
+              const d = await p.evaluate(() => JSON.stringify({drawn: window.__izo.MHD.drawn}));
               console.log('ZOOM', zoom, d);
               const s = (await p.screenshot({type: 'jpeg', quality: 70})).toString('base64');
               console.log('OBR', zoom, s.length);
