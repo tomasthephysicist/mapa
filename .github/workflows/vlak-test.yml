@@ -1,0 +1,58 @@
+name: Vlak test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mapa-site
+          path: s
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test v prohlizeci
+        run: |
+          cd s
+          curl -sSf https://tomasthephysicist.github.io/mapa/index.html -o index.html
+          curl -sSf https://tomasthephysicist.github.io/mapa/mhd.json -o mhd.json
+          grep -c "isBus === 3" index.html
+          sed -i "s/if (location.hostname === 'localhost') window.__izo = {/window.__v = viewer; window.__izo = {/" index.html
+          python3 -m http.server 8123 >/dev/null 2>&1 &
+          cd ..
+          mkdir t && cd t && npm init -y >/dev/null && npm i playwright@1.49.1 >/dev/null && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > t.js <<'JS'
+          const {chromium} = require('playwright');
+          (async () => {
+            const b = await chromium.launch();
+            const p = await b.newPage({viewport: {width: 1000, height: 700}});
+            p.on('pageerror', e => console.log('CHYBA', e.message));
+            await p.addInitScript(() => {
+              const R = Date, T = R.UTC(2026, 10, 6, 13, 11, 30), S = R.now();
+              class D extends R { constructor(...a) { if (a.length) super(...a); else super(T + R.now() - S); } static now() { return T + R.now() - S; } }
+              window.Date = D;
+            });
+            await p.goto('http://localhost:8123/', {waitUntil: 'load', timeout: 90000});
+            await p.waitForFunction(() => window.__izo && window.__izo.MHD.on, {timeout: 60000});
+            await p.waitForTimeout(4000);
+            const info = await p.evaluate(() => { const z = window.__izo, a = z.mhdActive(); return {
+              traffic: document.getElementById('l-traffic').checked, sluzeb: Object.keys(z.MHD.services).length, vlaku: z.MHD.trips.length, drawn: z.MHD.drawn,
+              act: a.map(q => { const o = z.mhdPos(z.MHD.trips[q[0]], q[1]); return {i: q[0], el: q[1], x: o.x, y: o.y, ix: o.ix, iy: o.iy}; }) }; });
+            console.log('INFO', JSON.stringify(info));
+            const o = info.act[0];
+            if (o) for (const zoom of [0.5, 1.5]) {
+              await p.evaluate(([ix, iy, zoom]) => { const v = window.__v, W = v.world.getItemAt(0).getContentSize().x; v.viewport.zoomTo(v.viewport.imageToViewportZoom(zoom), null, true); v.viewport.panTo(new OpenSeadragon.Point(ix / W, iy / W), true); }, [o.ix, o.iy, zoom]);
+              await p.waitForTimeout(9000);
+              const d = await p.evaluate(() => JSON.stringify({drawn: window.__izo.MHD.drawn, sx: window.__v.viewport.viewportToImageZoom(window.__v.viewport.getZoom(true))}));
+              console.log('ZOOM', zoom, d);
+              const s = (await p.screenshot({type: 'jpeg', quality: 70})).toString('base64');
+              console.log('OBR', zoom, s.length);
+              for (let i = 0; i < s.length; i += 4000) console.log('B64' + zoom, s.slice(i, i + 4000));
+            }
+            await b.close();
+          })();
+          JS
+          node t.js
